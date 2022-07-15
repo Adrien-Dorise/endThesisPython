@@ -6,6 +6,7 @@ import detectionToolbox as diag
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 import sys
 import matplotlib.pyplot as plt 
 import time
@@ -42,7 +43,7 @@ class Timer():
 
 
 def getLabel(labels, faultValue, windowSize):
-    parameter = 5 #Can be changed to modify number of labels modified in the sliding window
+    parameter = windowSize / 2 #the number of fault lable to be found in the timeWindow to modify all labels of time window
     
     tempLabels = labels.copy()
     for i in range(len(labels)):
@@ -77,16 +78,58 @@ def anomalyRemoval(faultyDataSet,normalDataSet,labelArray,faultValue,iteration,w
     
     for j in range(lastNormalIteration,lastFaultIteration):
         faultyDataSet[j,:] = normalDataSet[j,:]
-        labelArray[j] = 100
+        labelArray[j] = 1
     
     return faultyDataSet, labelArray
+
+
+def doPerPoint(model, data, classes, faultValue, cm, time, plot):
+    with Timer() as timer:
+        # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
+        # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
+        # faultyDataTemp = diagTestScale1
+        faultyDataTemp = data.copy()
+        # classTemp = testClassClassif.copy()
+        classTemp = classes.copy()
+        for i in range(len(faultyDataTemp[:,0])):
+            tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],model,faultValue=faultValue,classif=True)
+            # if(tempPred == -1 and classTemp[i] == 1):
+            #     faultyDataTemp, classTemp = anomalyRemoval(faultyDataTemp,diagNormalScale,classTemp,1,i,windowSize)
+            cm = np.add(cm ,tempCM)
+        time.append(timer.interval)
+        if(plot):
+            diag.plotClassification(faultyDataTemp,classTemp,model,figName='KNN',xlabel='X',ylabel='Y',save=save,folderPath=savePath)
+        return cm,timer
+
+
+def doRupture(model, data, classes, faultValue, rupturePenalty, cm, time, plot) :
+    with Timer() as timer: #Rupture
+        # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
+        # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
+        # faultyDataTemp = diagTestScale1
+        faultyDataTemp = data.copy()
+        # classTemp = testClassClassif.copy()
+        classTemp = classes.copy()
+        timeRuptureAlgo,timeRuptureBreakPoints,timeRuptureDataBreak = diag.timeRupture(data[:,2],penaltyValue=rupturePenalty,plot=plot)
+        for i in range(len(timeRuptureBreakPoints)-1):
+            indices1 = [timeRuptureBreakPoints[i],timeRuptureBreakPoints[i+1]]   
+            classValue1 = diag.getClass(indices1,classTemp)   #getting the real class for the set of points
+            points = np.array(faultyDataTemp[indices1,0].mean(),ndmin=2)
+            for featureColumn in range(1,faultyDataTemp.shape[1]):
+                points = np.append(points,np.array(faultyDataTemp[indices1,featureColumn].mean(),ndmin=2),axis=1)
+                tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,modelKnn,faultValue=1,classif=True)
+                cm = np.add(cm ,tempCM)
+    time.append(timer.interval) 
+    return cm,time
+    
 
 
 #General parameters
 # dataPath = 'H:\\DIAG_RAD\\Programs\\Diagnostic_python\\DiagnosticExample\\ExampleDataSets'
 # savePath = 'H:\\DIAG_RAD\\Results\\Diagnostic\\Example\\example1' 
 dataChoice = 1 #1 for simulated data: 2 for real datas
-dataPath = 'H:\DIAG_RAD\DataSets\Simulation_Matlab\datasGenerator\DataExemple'
+trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet\\microLatch"
+testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\microLatch"
 savePathFolder = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\multiple_testSets\\3classes\\mean_variance_trainSet'
 resultPath = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\Accuracy\\classificationAllStats\\classi2'
 saveResult = 0
@@ -94,6 +137,10 @@ saveResult = 0
 diagDataChoice = 1 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq); 6 all stats
 
 addNewLatchClass = 0
+bigLatch = False #Adjust the labels in the time window
+windowSize = 10
+rupturePenalty = 0.8
+faultValue = 1
 
 watchDogThreshold = 78
 classifierChoice = 'Knn' # 'Knn', 'svm', 'decision_tree_classifier, 'random_forest_classifier', 'naive_bayes'
@@ -105,9 +152,6 @@ testParamRange = range(1,1+1)
 trainRange = range(1,1+1)
 testRange = range(1,1+1)
 
-doAddPointPerPoint = 1
-doAddPointRupt = 1
-
 
 plotFeatures = 0
 plotTimeRupt = 0
@@ -116,6 +160,9 @@ plotDiagRupture = 0
 plotDiagPerPoints = 0
 plotAccuracyPerMethods = 0
 plotAccuracyAllSets = 0
+
+plotTrain=0
+plotTest=0
 
 save = 0
 
@@ -218,13 +265,26 @@ timePerPointBayes,timeRuptBayes = [], []
 timePerPointTree,timeRuptTree = [], []
 timePerPointForest,timeRuptForest = [], [] 
 
+scaler = MinMaxScaler(feature_range=(0,1))
+
+classificationList = ['OCSVM', 'elliptic classification', 'LOF', 'isolation forest']
+classificationName = ['OCSVM', 'Elliptic classification', 'LOF', 'Isolation forest']
+colors = ['green','red','blue','blue','blue','blue','blue','blue','blue','blue',]
+className = ['normal','latch','','','','latch','front de latch up']
+
 #Accuracy comparison for all methods
 for trainSetNumber in trainRange:
     savePath = savePathFolder + str(trainSetNumber)
-    trainDataPath = dataPath + '\\TrainLatch2'
     data=data.append(diag.ifacDataFrame('train'+str(trainSetNumber)))
-    trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, dataIndice = trainSetNumber,dataChoice = dataChoice, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
-
+    trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, dataIndice = trainSetNumber,dataChoice = dataChoice,windowSize=windowSize, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
+    trainClass[np.where(trainClass == 5)[0]] = 1 
+    trainScale = scaler.fit_transform(trainData[:,2].reshape(-1,1))
+    # diagTrainScale1 = diag.statExtraction(trainScale,windowSize,diagDataChoice)
+    if(plotFeatures):
+        diag.plotLabelPoints(diagTrainScale1, trainClass, className,figName='trainSet',colors=colors,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
+    
+    if bigLatch:
+        trainClass = getLabel(trainClass,faultValue=1,windowSize=windowSize)
     
     k=9
     modelKnn,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'Knn',knn_n_neighbors=k,figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
@@ -233,34 +293,63 @@ for trainSetNumber in trainRange:
     ensemble = 25
     modelForest,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'random_forest_classifier',ensemble_estimators=ensemble,figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
     modelSVM,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'svm',figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
-
+    
     
     for testSetNumber in testRange:
-        testDataPath = dataPath + '\\TestLatch2'
         
         #Import Data
-        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
+        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel = diag.preprocessing(dataColumnChoice = 2, dataPath = testDataPath, windowSize=windowSize, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = ' ',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
         featureName = featureChoice
+        faultySetScale = scaler.transform(testData[:,2].reshape(-1,1))
+        normalSet = scaler.transform(testData[:,1].reshape(-1,1))
+        diagNormalScale = diag.statExtraction(normalSet,windowSize,diagDataChoice)
+        testClassClassif = testClass.copy()
+        testClassClassif[np.where(testClassClassif != 5)[0]] = 0
+        testClassClassif[np.where(testClassClassif == 5)[0]] = 1
         
-        
+        #!!!!!!This function is to be used when the fault value is too important and mess up witht the sliding window!!!!!!!!!!!!!!!!!!!!!
+        # if bigLatch:
+        #     testClassClassif = getLabel(testClassClassif,faultValue=1,windowSize=windowSize)
        
         
         
         # We do a classification for all algorithms possible in order to compare them
         classifierChoice = 'Knn'
+        # cmPerPointKnn,timePerPointKnn = doPerPoint(modelKnn, diagTestScale1, testClassClassif, faultValue,cmPerPointKnn,timePerPointKnn, plotDiagPerPoints)
+        # cmRuptKnn,timeRuptKnn = doRupture(modelKnn, diagTestScale1, testClassClassif, faultValue, rupturePenalty, cmRuptKnn, timeRuptKnn, plotDiagPerPoints)
+        
+       
         with Timer() as timer: #PerPoint
-            accuracyPerPoint,cmPerPoint = diag.doResultClassificationPerPoint(testData,diagTestScale1,testClass,modelKnn,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyPerPointKnn[testSetNumber-1,trainSetNumber-1] = accuracyPerPoint
-            for j in range(len(cmPerPoint)):
-                cmPerPointKnn[j] += cmPerPoint[j]
+            # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
+            # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
+            faultyDataTemp = diagTestScale1
+            classTemp = testClassClassif.copy()
+            for i in range(len(diagTestScale1)):
+                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],modelKnn,faultValue=1,classif=True)
+                # print('i: ' + str(i) + ' / pred: ' + str(tempPred[0]) + ' / class: ' + str(classOCSVM[i]))
+                # if(tempPred == -1 and classTemp[i] == 1):
+                #     faultyDataTemp, classTemp = anomalyRemoval(faultyDataTemp,diagNormalScale,classTemp,1,i,windowSize)
+                cmPerPointKnn = np.add(cmPerPointKnn ,tempCM)
         timePerPointKnn.append(timer.interval)
+        if(plotTest):
+            diag.plotClassification(faultyDataTemp,classTemp,modelKnn,className,figName='KNN',xlabel='X',ylabel='Y',save=save,folderPath=savePath)
+
         
         with Timer() as timer: #Rupture
-            accuracyRupture,cmRupture = diag.doResultClassificationRupture(testData,diagTestScale1,testClass,modelKnn,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyRuptureKnn[testSetNumber-1,trainSetNumber-1] = accuracyRupture
-            for j in range(len(cmRupture)):
-                cmRuptKnn[j] += cmRupture[j] 
-        timeRuptKnn.append(timer.interval)
+            # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
+            # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
+            faultyDataTemp = diagTestScale1
+            classTemp = testClassClassif.copy()
+            timeRuptureAlgo,timeRuptureBreakPoints,timeRuptureDataBreak = diag.timeRupture(testData[:,2],penaltyValue=rupturePenalty,folderPath=savePath,ylabel='Current',xlabel='Time (s)',save=save,plot=plotTimeRupt)
+            for i in range(len(timeRuptureBreakPoints)-1):
+                indices1 = [timeRuptureBreakPoints[i],timeRuptureBreakPoints[i+1]]   
+                classValue1 = diag.getClass(indices1,classTemp)   #getting the real class for the set of points
+                points = np.array(faultyDataTemp[indices1,0].mean(),ndmin=2)
+                for featureColumn in range(1,faultyDataTemp.shape[1]):
+                    points = np.append(points,np.array(faultyDataTemp[indices1,featureColumn].mean(),ndmin=2),axis=1)
+                    tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,modelKnn,faultValue=1,classif=True)
+                    cmRuptKnn = np.add(cmRuptKnn ,tempCM)
+        timeRuptKnn.append(timer.interval)    
 
 
         classifierChoice = 'naive_bayes'
@@ -325,10 +414,9 @@ for trainSetNumber in trainRange:
             for j in range(len(cmRupture)):
                 cmRuptSVM[j] += cmRupture[j] 
         timeRuptSVM.append(timer.interval)
-        
+
         
         print('\nACCURACY for trainSet ' + str(trainSetNumber) + ' in test set ' + str(testSetNumber) + '\n')
-
 
 #Accuracy per Algorithm
 '''
@@ -399,7 +487,7 @@ if saveResult:
 '''
 
 totalPerPoint = cmPerPointSVM[0] + cmPerPointSVM[1] + cmPerPointSVM[2] + cmPerPointSVM[3]
-totalPointRupture = cmRuptSVM[0] + cmRuptSVM[1] + cmRuptSVM[2] + cmRuptSVM[3]
+
 
 cmPercentPerPointKnn= [100*cmPerPointKnn[0]/totalPerPoint, 100*cmPerPointKnn[1]/totalPerPoint, 100*cmPerPointKnn[2]/totalPerPoint, 100*cmPerPointKnn[3]/totalPerPoint]
 cmPercentPerPointBayes = [100*cmPerPointBayes[0]/totalPerPoint, 100*cmPerPointBayes[1]/totalPerPoint, 100*cmPerPointBayes[2]/totalPerPoint, 100*cmPerPointBayes[3]/totalPerPoint]
@@ -407,11 +495,15 @@ cmPercentPerPointTree = [100*cmPerPointTree[0]/totalPerPoint, 100*cmPerPointTree
 cmPercentPerPointForest = [100*cmPerPointForest[0]/totalPerPoint, 100*cmPerPointForest[1]/totalPerPoint, 100*cmPerPointForest[2]/totalPerPoint, 100*cmPerPointForest[3]/totalPerPoint]
 cmPercentPerPointSVM = [100*cmPerPointSVM[0]/totalPerPoint, 100*cmPerPointSVM[1]/totalPerPoint, 100*cmPerPointSVM[2]/totalPerPoint, 100*cmPerPointSVM[3]/totalPerPoint]
 
-
+totalPointRupture = cmRuptKnn[0] + cmRuptKnn[1] + cmRuptKnn[2] + cmRuptKnn[3]
 cmPercentRuptKnn= [100*cmRuptKnn[0]/totalPointRupture, 100*cmRuptKnn[1]/totalPointRupture, 100*cmRuptKnn[2]/totalPointRupture, 100*cmRuptKnn[3]/totalPointRupture]
+totalPointRupture = cmRuptBayes[0] + cmRuptBayes[1] + cmRuptBayes[2] + cmRuptBayes[3]
 cmPercentRuptBayes = [100*cmRuptBayes[0]/totalPointRupture, 100*cmRuptBayes[1]/totalPointRupture, 100*cmRuptBayes[2]/totalPointRupture, 100*cmRuptBayes[3]/totalPointRupture]
+totalPointRupture = cmRuptTree[0] + cmRuptTree[1] + cmRuptTree[2] + cmRuptTree[3]
 cmPercentRuptTree = [100*cmRuptTree[0]/totalPointRupture, 100*cmRuptTree[1]/totalPointRupture, 100*cmRuptTree[2]/totalPointRupture, 100*cmRuptTree[3]/totalPointRupture]
+totalPointRupture = cmRuptForest[0] + cmRuptForest[1] + cmRuptForest[2] + cmRuptForest[3]
 cmPercentRuptForest = [100*cmRuptForest[0]/totalPointRupture, 100*cmRuptForest[1]/totalPointRupture, 100*cmRuptForest[2]/totalPointRupture, 100*cmRuptForest[3]/totalPointRupture]
+totalPointRupture = cmRuptSVM[0] + cmRuptSVM[1] + cmRuptSVM[2] + cmRuptSVM[3]
 cmPercentRuptSVM = [100*cmRuptSVM[0]/totalPointRupture, 100*cmRuptSVM[1]/totalPointRupture, 100*cmRuptSVM[2]/totalPointRupture, 100*cmRuptSVM[3]/totalPointRupture]
 
 
@@ -428,7 +520,6 @@ meanTimeRuptForest = sum(timeRuptForest)/len(timeRuptForest)
 meanTimePerPointSVM = sum(timePerPointSVM)/len(timePerPointSVM)
 meanTimeRuptSVM = sum(timeRuptSVM)/len(timeRuptSVM)
 
-print("TP FP FN TN")
 print("Train set: " + trainDataPath)
 print("Test set: " + testDataPath)
 print("TP FP FN TN")

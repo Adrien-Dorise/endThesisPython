@@ -220,7 +220,7 @@ for trainSetNumber in trainRange:
     savePath = savePathFolder + str(trainSetNumber)
     data=data.append(diag.ifacDataFrame('train'+str(trainSetNumber)))
     trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, windowSize=windowSize, dataIndice = trainSetNumber,dataChoice = dataChoice, dataColumnChoice=1, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
-    trainClass[np.where(trainClass == 5)[0]] = 0 
+    # trainClass[np.where(trainClass == 5)[0]] = 0 
     trainScale = scaler.fit_transform(trainData[:,1].reshape(-1,1))
     diagTrainScale1 = diag.statExtraction(trainScale,windowSize,diagDataChoice)
     if(plotFeatures):
@@ -258,14 +258,7 @@ for trainSetNumber in trainRange:
         if bigLatch:
             testClassOCC = getLabel(testClassOCC,1,windowSize)
         
-        
-        for k in range(len(testClassOCC)):
-            if testClassOCC[k] == 0:
-                classCount = np.add(classCount,[1,0])
-            else:
-                classCount= np.add(classCount,[0,1])
-        # testClassOCC[np.where(testClassOCC == 0)[0]] = False
-        # testClassOCC[np.where(testClassOCC == 1)[0]] = True
+    
 
         predictionResult = []
         classifierChoice = 'OCSVM'
@@ -274,7 +267,7 @@ for trainSetNumber in trainRange:
             faultyDataOCSVM = diag.statExtraction(faultyDataOCSVM,windowSize,diagDataChoice)
             classOCSVM = testClassOCC.copy()
             for i in range(len(diagTestScale1)):
-                tempCM,tempPred = diag.confusionMatrixOCC(faultyDataOCSVM[i,:],classOCSVM[i],modelOCSVM,1)
+                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataOCSVM[i,:],classOCSVM[i],modelOCSVM,1)
                 # print('i: ' + str(i) + ' / pred: ' + str(tempPred[0]) + ' / class: ' + str(classOCSVM[i]))
                 if(tempPred[0] == -1 and classOCSVM[i] == 1):
                     faultyDataOCSVM, classOCSVM = anomalyRemoval(faultyDataOCSVM,diagNormalScale,classOCSVM,1,i,windowSize)
@@ -292,7 +285,7 @@ for trainSetNumber in trainRange:
             faultyDataEC = diag.statExtraction(faultyDataEC,windowSize,diagDataChoice)
             classEC = testClassOCC.copy()
             for i in range(len(diagTestScale1)):
-                tempCM,tempPred  = diag.confusionMatrixOCC(faultyDataEC[i,:],classEC[i],modelEC,1)
+                tempCM,tempPred  = diag.confusionMatrixClassifier(faultyDataEC[i,:],classEC[i],modelEC,1)
                 if(tempPred[0] == -1 and classEC[i] == 1):
                     faultyDataEC, classEC = anomalyRemoval(faultyDataEC,diagNormalScale,classEC,1,i,windowSize)
                 cmEC = np.add(cmEC ,tempCM)
@@ -307,7 +300,7 @@ for trainSetNumber in trainRange:
             faultyDataLOF = diag.statExtraction(faultyDataLOF,windowSize,diagDataChoice)
             classLOF = testClassOCC.copy()
             for i in range(len(diagTestScale1)):
-                tempCM,tempPred = diag.confusionMatrixOCC(faultyDataLOF[i,:],classLOF[i],modelLOF,1)
+                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataLOF[i,:],classLOF[i],modelLOF,1)
                 if(tempPred[0] == -1 and classLOF[i] == 1):
                     faultyDataLOF, classLOF = anomalyRemoval(faultyDataLOF,diagNormalScale,classLOF,1,i,windowSize)
                 cmLOF = np.add(cmLOF,tempCM)        
@@ -323,7 +316,7 @@ for trainSetNumber in trainRange:
             faultyDataIF = diag.statExtraction(faultyDataIF,windowSize,diagDataChoice)
             classIF = testClassOCC.copy()
             for i in range(len(diagTestScale1)):
-                tempCM,tempPred  = diag.confusionMatrixOCC(faultyDataIF[i,:],classIF[i],modelIF,1)
+                tempCM,tempPred  = diag.confusionMatrixClassifier(faultyDataIF[i,:],classIF[i],modelIF,1)
                 if(tempPred[0] == -1 and classIF[i] == 1):
                     faultyDataIF,classIF = anomalyRemoval(faultyDataIF,diagNormalScale,classIF,1,i,windowSize)
 

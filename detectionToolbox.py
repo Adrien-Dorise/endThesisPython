@@ -723,7 +723,7 @@ def clustering(data,clusteringChoice='Kmeans', metric = 'euclidean',doEvaluation
 
 
 
-def classifier(data,classes,classifierChoice='Knn',RocDefectValue=5,ensemble_estimators=25,tree_criterion='entropy',knn_n_neighbors=5,random_state=None,save=0,splitSize=0.20,plot=0,xlabel='X',ylabel='Y',classesName='',folderPath='',figName='Classification',randomColors = 0):
+def classifier(data,classes,classifierChoice='Knn',RocDefectValue=1,ensemble_estimators=25,tree_criterion='entropy',knn_n_neighbors=5,random_state=None,save=0,splitSize=0.20,plot=0,xlabel='X',ylabel='Y',classesName='',folderPath='',figName='Classification',randomColors = 0):
     '''
     Uses a classification methods to predict classes among given data set. The data set is splitted into a train set and a test set.
     Implemented methods are 'K-nn', 'SVM', 'Decision tree', 'Random forest', 'Naïve Bayes'.
@@ -1020,7 +1020,7 @@ def fitClassification(point,pointClass,classifier):
     return predictionResult,confusionMatrix
     
 
-def confusionMatrixOCC(point,pointClass,classifier,faultValue):
+def confusionMatrixClassifier(point,pointClass,classifier,faultValue, classif = False):
     '''
     Gives the accuracy of a classication algorithm for a given point. If the classification match the real point's class, then it returns 1, else 0.
 
@@ -1043,6 +1043,15 @@ def confusionMatrixOCC(point,pointClass,classifier,faultValue):
     if len(np.shape(point)) == 1:    #There are only 1 coordinate but the matrix shape is (2,1) instead of (1,2)
         point = point.reshape(1,-1)
     prediction = classifier.predict(point)
+    
+    if(classif):#We do this because depending on the classifier, the prediction value can change
+        if(prediction == 1):
+            prediction = -1
+        if(prediction == 0):
+            prediction = 1
+        
+    
+        
     if prediction == 1 and (pointClass != faultValue and pointClass != 100):
         confusionMatrix = np.add(confusionMatrix,[0,0,0,1])
     elif prediction == 1 and pointClass == faultValue:
@@ -1051,6 +1060,8 @@ def confusionMatrixOCC(point,pointClass,classifier,faultValue):
         confusionMatrix = np.add(confusionMatrix,[0,1,0,0])
     elif (prediction == -1 and pointClass == faultValue) or pointClass == 100:
         confusionMatrix = np.add(confusionMatrix,[1,0,0,0])
+
+    # print(str(prediction) + ' / '+ str(pointClass)+' / ')
         
     return confusionMatrix, prediction
 
@@ -1193,7 +1204,7 @@ def addPoint(points,data,algo,algoType,pointClass='',classification_classes_set=
 
 
 
-def getClass(indices,classes,classesName):
+def getClass(indices,classes,classesValuesToFind=[0,1]):
     '''
     Return the class of a given set of points. The matrix must have been created by the dataGenerator Matlab function
     If there are multiple points, the class chosen is the more present in the set.
@@ -1205,26 +1216,26 @@ def getClass(indices,classes,classesName):
         Positons of datas in the data set.
     classes : nparray
         Array containing the class values for the data set.
-    classesName : list of strings
-        List containing the name of the different classes.
+    classesValuesToFind : array of int
+        Values of the possible classes to find
 
     Returns
     -------
     classValue : int
         Return the class indice in classesName list
-    className : string
-        Return the name of the points set main class.
+    
 
     '''
     if type(indices)==int:
-        indices = np.array([indices])
-    classCount = np.zeros(len(classesName))
-    for i in range(len(indices)):   #We count the number of time each class appears in the set
-        classCount[int(classes[indices[i]])] += 1
+        return classes[indices]
+    
+    classCount = np.zeros(len(classesValuesToFind))
+    for i in range(len(classesValuesToFind)):   #We count the number of time each class appears in the set
+        classCount[i] = np.count_nonzero(classes[indices[0]:indices[1]] == classesValuesToFind[i])
     mainClass = np.array(np.where(classCount == classCount.max())).transpose()
     if len(mainClass) != 1:
         print('Warning in getClass: Multiple classes have same number of iteration. Only one will be selected')
-    return mainClass[0][0],classesName[mainClass[0][0]]
+    return mainClass[0][0]
 
 
 
@@ -1250,7 +1261,7 @@ def classificationColors(classes_set):
     '''
     # Visualising the Training set results
     #Choice of color list
-    colorReferences = ['green','purple', 'blue','pink','yellow'];
+    colorReferences = ['green','red', 'blue','pink','yellow'];
     colors = []
     if type(classes_set) is not np.ndarray:
         classes_set = np.array(classes_set)
@@ -2255,7 +2266,7 @@ def preprocessing(dataPath,dataIndice = 1,dataChoice = 1,diagDataChoice = 2, win
     colors = ['green','red']
     plotStats = 0
     plotFrequency = 0
-    className = ['normal','','','','','latch','front de latch up']
+    className = ['normal','latch','','','','latch','front de latch up']
     
     if dataChoice == 2:
       #Folder path initialisation
@@ -2639,7 +2650,7 @@ def doResultClassificationRupture(testSerie,diagTestScale,realTestClass,classifi
         figName = classifierChoice + '_test_' + featureChoice + '_rupture_confusion_matrix_' + str(i+1) 
         
         indices1 = [timeRuptureBreakPoints[i],timeRuptureBreakPoints[i+1]]   
-        classValue1, classValueString1 = getClass(indices1,realTestClass,className)   #getting the real class for the set of points
+        classValue1 = getClass(indices1,realTestClass,className)   #getting the real class for the set of points
         points = np.array(diagTestScale[indices1,0].mean(),ndmin=2)
         for featureColumn in range(1,diagTestScale.shape[1]):
             points = np.append(points,np.array(diagTestScale[indices1,0].mean(),ndmin=2),axis=1)

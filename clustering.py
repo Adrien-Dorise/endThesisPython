@@ -9,6 +9,73 @@ from sklearn import preprocessing
 import os
 import time
 
+
+
+
+# Timer class
+import time
+class Timer():  
+    def __enter__(self):  
+        self.start()   
+        # __enter__ must return an instance bound with the "as" keyword  
+        return self  
+      
+    # There are other arguments to __exit__ but we don't care here  
+    def __exit__(self, *args, **kwargs):   
+        self.stop()  
+      
+    def start(self):  
+        if hasattr(self, 'interval'):  
+            del self.interval  
+        self.start_time = time.time()  
+  
+    def stop(self):  
+        if hasattr(self, 'start_time'):  
+            self.interval = time.time() - self.start_time  
+            del self.start_time # Force timer reinit  
+
+
+def getLabel(labels, faultValue, windowSize):
+    parameter = 5 #Can be changed to modify number of labels modified in the sliding window
+    
+    tempLabels = labels.copy()
+    for i in range(len(labels)):
+        if i + windowSize > len(labels):
+            tempLabels[i] = labels[i]
+        else:
+            count = 0
+            for j in range(i,i+windowSize):
+                if labels[j] == faultValue:
+                    count += 1
+            if count >= parameter:
+                tempLabels[i] = faultValue
+            else:
+                tempLabels[i] = 0
+    return tempLabels
+
+
+
+
+
+def anomalyRemoval(faultyDataSet,normalDataSet,labelArray,faultValue,iteration,windowSize):
+    # if(labelArray[iteration - windowSize] == faultValue):
+    i = iteration
+    while(labelArray[i] == faultValue):
+        i-=1
+    lastNormalIteration = i
+    
+    i = iteration
+    while(labelArray[i] == faultValue):
+        i+=1
+    lastFaultIteration = i
+    
+    for j in range(lastNormalIteration,lastFaultIteration):
+        faultyDataSet[j,:] = normalDataSet[j,:]
+        labelArray[j] = 100
+    
+    return faultyDataSet, labelArray
+
+
 def modifyDyclee(g_size):
     file = open('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\file.txt','r')
     DycleeFile = file.read()
@@ -25,7 +92,8 @@ def modifyDyclee(g_size):
 # 'H:\\DIAG_RAD\\Programs\\Diagnostic_python\\DiagnosticExample\\ExampleDataSets\\All16.txt'
 
 dataChoice = 1 #1 for simulated data: 2 for real datas
-dataPath = 'H:\\DIAG_RAD\\DataSets\\Simulation_Matlab\\datasGenerator\\DataExemple\\TestLatch2'
+trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet"
+testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\microLatch"
 resultPath = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\Accuracy\\clusteringAllStats\\test4'
 dataIndice = 1
 diagDataChoice = 6 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq)
@@ -176,7 +244,7 @@ j=0
 for indice in dataRange:
     dataIndice = indice
     print('Indice number ' + str(indice))
-    timeSerie, features,dataClustering,classClustering, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = dataPath, dataIndice = dataIndice, dataName = dataName,diagDataChoice = diagDataChoice)
+    timeSerie, features,dataClustering,classClustering, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, dataIndice = dataIndice, dataName = dataName,diagDataChoice = diagDataChoice)
     
     
     
@@ -189,7 +257,6 @@ for indice in dataRange:
     accuracyPerPoint=[]
     accuracyRupture=[]
     for testSetNumber in testRange:
-        testDataPath = 'H:\\DIAG_RAD\\DataSets\\Simulation_Matlab\\datasGenerator\\DataExemple\\TestLatch2'
         testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,save=save)
         featureName = featureChoice
         classifierChoice = 'svm'
@@ -213,7 +280,6 @@ for indice in dataRange:
     if len(np.unique(clusterClass2)) <=1:
         clusterClass2[0]=5
     for testSetNumber in testRange:
-        testDataPath = 'H:\\DIAG_RAD\\DataSets\\Simulation_Matlab\\datasGenerator\\DataExemple\\TestLatch2'
         testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,save=save)
         featureName = featureChoice
         classifierChoice = 'svm'
@@ -240,7 +306,6 @@ for indice in dataRange:
     if len(np.unique(clusterClass3)) <=1:
         clusterClass3[0]=5
     for testSetNumber in testRange:
-        testDataPath = 'H:\\DIAG_RAD\\DataSets\\Simulation_Matlab\\datasGenerator\\DataExemple\\TestLatch2'
         testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,save=save)
         featureName = featureChoice
         classifierChoice = 'svm'
@@ -280,7 +345,6 @@ for indice in dataRange:
     if len(np.unique(clusterClass4)) <=1:
         clusterClass4[0]=5
     for testSetNumber in testRange:
-        testDataPath = 'H:\\DIAG_RAD\\DataSets\\Simulation_Matlab\\datasGenerator\\DataExemple\\TestLatch2'
         testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,save=save)
         featureName = featureChoice
         classifierChoice = 'svm'
