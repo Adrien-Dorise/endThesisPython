@@ -1233,8 +1233,8 @@ def getClass(indices,classes,classesValuesToFind=[0,1]):
     for i in range(len(classesValuesToFind)):   #We count the number of time each class appears in the set
         classCount[i] = np.count_nonzero(classes[indices[0]:indices[1]] == classesValuesToFind[i])
     mainClass = np.array(np.where(classCount == classCount.max())).transpose()
-    if len(mainClass) != 1:
-        print('Warning in getClass: Multiple classes have same number of iteration. Only one will be selected')
+    # if len(mainClass) != 1:
+    #     print('Warning in getClass: Multiple classes have same number of iteration. Only one will be selected')
     return mainClass[0][0]
 
 

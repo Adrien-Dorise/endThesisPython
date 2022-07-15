@@ -96,13 +96,13 @@ def doPerPoint(model, data, classes, faultValue, cm, time, plot):
             # if(tempPred == -1 and classTemp[i] == 1):
             #     faultyDataTemp, classTemp = anomalyRemoval(faultyDataTemp,diagNormalScale,classTemp,1,i,windowSize)
             cm = np.add(cm ,tempCM)
-        time.append(timer.interval)
-        if(plot):
-            diag.plotClassification(faultyDataTemp,classTemp,model,figName='KNN',xlabel='X',ylabel='Y',save=save,folderPath=savePath)
-        return cm,timer
+    time.append(timer.interval)
+    if(plot):
+        diag.plotClassification(faultyDataTemp,classTemp,model,figName='KNN',xlabel='X',ylabel='Y',save=save,folderPath=savePath)
+    return cm,time
 
 
-def doRupture(model, data, classes, faultValue, rupturePenalty, cm, time, plot) :
+def doRupture(model, data, timeSeries, classes, faultValue, rupturePenalty, cm, time, plot) :
     with Timer() as timer: #Rupture
         # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
         # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
@@ -110,7 +110,7 @@ def doRupture(model, data, classes, faultValue, rupturePenalty, cm, time, plot) 
         faultyDataTemp = data.copy()
         # classTemp = testClassClassif.copy()
         classTemp = classes.copy()
-        timeRuptureAlgo,timeRuptureBreakPoints,timeRuptureDataBreak = diag.timeRupture(data[:,2],penaltyValue=rupturePenalty,plot=plot)
+        timeRuptureAlgo,timeRuptureBreakPoints,timeRuptureDataBreak = diag.timeRupture(timeSeries[:,2],penaltyValue=rupturePenalty,plot=plot)
         for i in range(len(timeRuptureBreakPoints)-1):
             indices1 = [timeRuptureBreakPoints[i],timeRuptureBreakPoints[i+1]]   
             classValue1 = diag.getClass(indices1,classTemp)   #getting the real class for the set of points
@@ -315,106 +315,32 @@ for trainSetNumber in trainRange:
         
         # We do a classification for all algorithms possible in order to compare them
         classifierChoice = 'Knn'
-        # cmPerPointKnn,timePerPointKnn = doPerPoint(modelKnn, diagTestScale1, testClassClassif, faultValue,cmPerPointKnn,timePerPointKnn, plotDiagPerPoints)
-        # cmRuptKnn,timeRuptKnn = doRupture(modelKnn, diagTestScale1, testClassClassif, faultValue, rupturePenalty, cmRuptKnn, timeRuptKnn, plotDiagPerPoints)
+        cmPerPointKnn,timePerPointKnn = doPerPoint(modelKnn, diagTestScale1, testClassClassif, faultValue,cmPerPointKnn,timePerPointKnn, plotDiagPerPoints)
+        cmRuptKnn,timeRuptKnn = doRupture(modelKnn, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptKnn, timeRuptKnn, plotDiagPerPoints)
         
        
-        with Timer() as timer: #PerPoint
-            # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
-            # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
-            faultyDataTemp = diagTestScale1
-            classTemp = testClassClassif.copy()
-            for i in range(len(diagTestScale1)):
-                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],modelKnn,faultValue=1,classif=True)
-                # print('i: ' + str(i) + ' / pred: ' + str(tempPred[0]) + ' / class: ' + str(classOCSVM[i]))
-                # if(tempPred == -1 and classTemp[i] == 1):
-                #     faultyDataTemp, classTemp = anomalyRemoval(faultyDataTemp,diagNormalScale,classTemp,1,i,windowSize)
-                cmPerPointKnn = np.add(cmPerPointKnn ,tempCM)
-        timePerPointKnn.append(timer.interval)
-        if(plotTest):
-            diag.plotClassification(faultyDataTemp,classTemp,modelKnn,className,figName='KNN',xlabel='X',ylabel='Y',save=save,folderPath=savePath)
-
-        
-        with Timer() as timer: #Rupture
-            # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
-            # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
-            faultyDataTemp = diagTestScale1
-            classTemp = testClassClassif.copy()
-            timeRuptureAlgo,timeRuptureBreakPoints,timeRuptureDataBreak = diag.timeRupture(testData[:,2],penaltyValue=rupturePenalty,folderPath=savePath,ylabel='Current',xlabel='Time (s)',save=save,plot=plotTimeRupt)
-            for i in range(len(timeRuptureBreakPoints)-1):
-                indices1 = [timeRuptureBreakPoints[i],timeRuptureBreakPoints[i+1]]   
-                classValue1 = diag.getClass(indices1,classTemp)   #getting the real class for the set of points
-                points = np.array(faultyDataTemp[indices1,0].mean(),ndmin=2)
-                for featureColumn in range(1,faultyDataTemp.shape[1]):
-                    points = np.append(points,np.array(faultyDataTemp[indices1,featureColumn].mean(),ndmin=2),axis=1)
-                    tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,modelKnn,faultValue=1,classif=True)
-                    cmRuptKnn = np.add(cmRuptKnn ,tempCM)
-        timeRuptKnn.append(timer.interval)    
-
 
         classifierChoice = 'naive_bayes'
-        with Timer() as timer: #PerPoint
-            accuracyPerPoint,cmPerPoint = diag.doResultClassificationPerPoint(testData,diagTestScale1,testClass,modelBayes,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyPerPointBayes[testSetNumber-1,trainSetNumber-1] = accuracyPerPoint
-            for j in range(len(cmPerPoint)):
-                cmPerPointBayes[j] += cmPerPoint[j]
-        timePerPointBayes.append(timer.interval)
+        cmPerPointBayes,timePerPointBayes = doPerPoint(modelBayes, diagTestScale1, testClassClassif, faultValue,cmPerPointKnn,timePerPointKnn, plotDiagPerPoints)
+        cmRuptBayes,timeRuptBayes = doRupture(modelBayes, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptKnn, timeRuptKnn, plotDiagPerPoints)
         
-        with Timer() as timer: #Rupture
-            accuracyRupture,cmRupture = diag.doResultClassificationRupture(testData,diagTestScale1,testClass,modelBayes,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyRuptureBayes[testSetNumber-1,trainSetNumber-1] = accuracyRupture
-            for j in range(len(cmRupture)):
-                cmRuptBayes[j] += cmRupture[j] 
-        timeRuptBayes.append(timer.interval)
-
+        
 
         classifierChoice = 'decision_tree_classifier'
-        with Timer() as timer: #PerPoint
-            accuracyPerPoint,cmPerPoint = diag.doResultClassificationPerPoint(testData,diagTestScale1,testClass,modelTree,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyPerPointTree[testSetNumber-1,trainSetNumber-1] = accuracyPerPoint
-            for j in range(len(cmPerPoint)):
-                cmPerPointTree[j] += cmPerPoint[j]
-        timePerPointTree.append(timer.interval)
+        cmPerPointTree,timePerPointTree = doPerPoint(modelTree, diagTestScale1, testClassClassif, faultValue,cmPerPointTree,timePerPointTree, plotDiagPerPoints)
+        cmRuptTree,timeRuptTree = doRupture(modelTree, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptTree, timeRuptTree, plotDiagPerPoints)
         
-        with Timer() as timer: #Rupture
-            accuracyRupture,cmRupture = diag.doResultClassificationRupture(testData,diagTestScale1,testClass,modelTree,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyRuptureTree[testSetNumber-1,trainSetNumber-1] = accuracyRupture
-            for j in range(len(cmRupture)):
-                cmRuptTree[j] += cmRupture[j] 
-        timeRuptTree.append(timer.interval)
-        
-        
+
+
         classifierChoice = 'random_forest_classifier'
-        with Timer() as timer: #PerPoint
-            accuracyPerPoint,cmPerPoint = diag.doResultClassificationPerPoint(testData,diagTestScale1,testClass,modelForest,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyPerPointForest[testSetNumber-1,trainSetNumber-1] = accuracyPerPoint
-            for j in range(len(cmPerPoint)):
-                cmPerPointForest[j] += cmPerPoint[j]
-        timePerPointForest.append(timer.interval)
-        
-        with Timer() as timer: #Rupture
-            accuracyRupture,cmRupture = diag.doResultClassificationRupture(testData,diagTestScale1,testClass,modelForest,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyRuptureForest[testSetNumber-1,trainSetNumber-1] = accuracyRupture
-            for j in range(len(cmRupture)):
-                cmRuptForest[j] += cmRupture[j] 
-        timeRuptForest.append(timer.interval)
+        cmPerPointForest,timePerPointForest = doPerPoint(modelForest, diagTestScale1, testClassClassif, faultValue,cmPerPointForest,timePerPointForest, plotDiagPerPoints)
+        cmRuptForest,timeRuptForest = doRupture(modelForest, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptForest, timeRuptForest, plotDiagPerPoints)
         
 
         classifierChoice = 'svm'
-        with Timer() as timer: #PerPoint
-            accuracyPerPoint,cmPerPoint = diag.doResultClassificationPerPoint(testData,diagTestScale1,testClass,modelSVM,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyPerPointSVM[testSetNumber-1,trainSetNumber-1] = accuracyPerPoint
-            for j in range(len(cmPerPoint)):
-                cmPerPointSVM[j] += cmPerPoint[j]
-        timePerPointSVM.append(timer.interval)
+        cmPerPointSVM,timePerPointSVM = doPerPoint(modelSVM, diagTestScale1, testClassClassif, faultValue,cmPerPointSVM,timePerPointSVM, plotDiagPerPoints)
+        cmRuptSVM,timeRuptSVM = doRupture(modelSVM, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptSVM, timeRuptSVM, plotDiagPerPoints)
         
-        with Timer() as timer: #Rupture
-            accuracyRupture,cmRupture = diag.doResultClassificationRupture(testData,diagTestScale1,testClass,modelSVM,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='result' + classifierChoice,savePath='',classifierChoice=classifierChoice,featureChoice=featureChoice)
-            accuracyRuptureSVM[testSetNumber-1,trainSetNumber-1] = accuracyRupture
-            for j in range(len(cmRupture)):
-                cmRuptSVM[j] += cmRupture[j] 
-        timeRuptSVM.append(timer.interval)
-
         
         print('\nACCURACY for trainSet ' + str(trainSetNumber) + ' in test set ' + str(testSetNumber) + '\n')
 

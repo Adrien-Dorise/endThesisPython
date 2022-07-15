@@ -91,6 +91,26 @@ def anomalyRemoval(faultyDataSet,normalDataSet,labelArray,faultValue,iteration,w
     return faultyDataSet, labelArray
         
 
+def doOCC(model, data, normalData, classes, windowSize, diagDataChoice, cm, time, plot):
+    with Timer() as timer:
+        faultyData = scaler.transform(data[:,2].reshape(-1,1))
+        faultyData = diag.statExtraction(faultyData,windowSize,diagDataChoice)
+        classTemp = classes.copy()
+        for i in range(len(faultyData[:,0])):
+            tempCM,tempPred = diag.confusionMatrixClassifier(faultyData[i,:],classTemp[i],model,1)
+            # print('i: ' + str(i) + ' / pred: ' + str(tempPred[0]) + ' / class: ' + str(classTemp[i]))
+            if(tempPred[0] == -1 and classTemp[i] == 1):
+                faultyData, classTemp = anomalyRemoval(faultyData,normalData,classTemp,1,i,windowSize)
+            cm = np.add(cm ,tempCM)
+            predictionResult.append(tempPred[0])
+    time.append(timer.interval)
+    if(plotTest):
+        diag.plotOCC(faultyData,testClassOCC,modelOCSVM,figName='OC_SVM',xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+
+    return cm ,time
+
+
+            
 '''
 #One class classification tests (Code taken from Example folder)
 plotStats = 1
@@ -180,8 +200,8 @@ cmAE = deep.confusionMatrixAE(prediction, testClassOCC)
 # dataPath = 'H:\\DIAG_RAD\\Programs\\Diagnostic_python\\DiagnosticExample\\ExampleDataSets'
 # savePath = 'H:\\DIAG_RAD\\Results\\Diagnostic\\Example\\example1' 
 dataChoice = 1 #1 for simulated data: 2 for real datas
-trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet"
-testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\bigLinearDeviationMicroLatch"
+trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet\\microLatch"
+testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\microLatch"
 # dataPath = '/media/adrien/Adrien_Dorise_USB1/DIAG_RAD/DataSets/Simulation_Matlab/datasGenerator/DataExemple'
 savePathFolder = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2022\\multiple_testSets\\3classes\\mean_variance_trainSet'
 resultPath = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2022\\Accuracy\\classificationAllStats\\classi2'
@@ -191,8 +211,8 @@ bigLatch = False #Adjust the labels in the time window
 diagDataChoice = 1 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq); 6 all stats
 windowSize = 20
 
-trainRange = range(1,10+1)
-testRange = range(1,10+1)
+trainRange = range(1,1+1)
+testRange = range(1,1+1)
 
 plotTrain=0
 plotTest=0
@@ -260,70 +280,21 @@ for trainSetNumber in trainRange:
         
     
 
-        predictionResult = []
         classifierChoice = 'OCSVM'
-        with Timer() as timer:
-            faultyDataOCSVM = scaler.transform(testData[:,2].reshape(-1,1))
-            faultyDataOCSVM = diag.statExtraction(faultyDataOCSVM,windowSize,diagDataChoice)
-            classOCSVM = testClassOCC.copy()
-            for i in range(len(diagTestScale1)):
-                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataOCSVM[i,:],classOCSVM[i],modelOCSVM,1)
-                # print('i: ' + str(i) + ' / pred: ' + str(tempPred[0]) + ' / class: ' + str(classOCSVM[i]))
-                if(tempPred[0] == -1 and classOCSVM[i] == 1):
-                    faultyDataOCSVM, classOCSVM = anomalyRemoval(faultyDataOCSVM,diagNormalScale,classOCSVM,1,i,windowSize)
-                cmOCSVM = np.add(cmOCSVM ,tempCM)
-                predictionResult.append(tempPred[0])
-        timeOCSVM.append(timer.interval)
-        if(plotTest):
-            diag.plotOCC(faultyDataOCSVM,testClassOCC,modelOCSVM,figName='OC_SVM',xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
-
-            
+        cmOCSVM, timeOCSVM = doOCC(modelOCSVM, testData, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmOCSVM, timeOCSVM, plotTest)
+        
 
         classifierChoice = 'elliptic classification'
-        with Timer() as timer:
-            faultyDataEC = scaler.transform(testData[:,2].reshape(-1,1))
-            faultyDataEC = diag.statExtraction(faultyDataEC,windowSize,diagDataChoice)
-            classEC = testClassOCC.copy()
-            for i in range(len(diagTestScale1)):
-                tempCM,tempPred  = diag.confusionMatrixClassifier(faultyDataEC[i,:],classEC[i],modelEC,1)
-                if(tempPred[0] == -1 and classEC[i] == 1):
-                    faultyDataEC, classEC = anomalyRemoval(faultyDataEC,diagNormalScale,classEC,1,i,windowSize)
-                cmEC = np.add(cmEC ,tempCM)
-        timeEC.append(timer.interval)
-        if(plotTest):
-            diag.plotOCC(faultyDataEC,testClassOCC,modelEC,figName='Elliptic_classification',xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+        cmEC, timeEC = doOCC(modelEC, testData, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmEC, timeEC, plotTest)
 
-        predictionResultLOF = []
+
         classifierChoice = 'LOF'
-        with Timer() as timer:
-            faultyDataLOF = scaler.transform(testData[:,2].reshape(-1,1))
-            faultyDataLOF = diag.statExtraction(faultyDataLOF,windowSize,diagDataChoice)
-            classLOF = testClassOCC.copy()
-            for i in range(len(diagTestScale1)):
-                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataLOF[i,:],classLOF[i],modelLOF,1)
-                if(tempPred[0] == -1 and classLOF[i] == 1):
-                    faultyDataLOF, classLOF = anomalyRemoval(faultyDataLOF,diagNormalScale,classLOF,1,i,windowSize)
-                cmLOF = np.add(cmLOF,tempCM)        
-                predictionResultLOF.append(tempPred[0])
-        timeLOF.append(timer.interval)
-        if(plotTest):
-            diag.plotOCC(faultyDataLOF,testClassOCC,modelLOF,figName='LOF',xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+        cmLOF, timeLOF = doOCC(modelLOF, testData, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmLOF, timeLOF, plotTest)
 
+      
 
         classifierChoice = 'isolation forest'
-        with Timer() as timer:
-            faultyDataIF = scaler.transform(testData[:,2].reshape(-1,1))
-            faultyDataIF = diag.statExtraction(faultyDataIF,windowSize,diagDataChoice)
-            classIF = testClassOCC.copy()
-            for i in range(len(diagTestScale1)):
-                tempCM,tempPred  = diag.confusionMatrixClassifier(faultyDataIF[i,:],classIF[i],modelIF,1)
-                if(tempPred[0] == -1 and classIF[i] == 1):
-                    faultyDataIF,classIF = anomalyRemoval(faultyDataIF,diagNormalScale,classIF,1,i,windowSize)
-
-                cmIF= np.add(cmIF,tempCM)        
-        timeIF.append(timer.interval)
-        if(plotTest):
-            diag.plotOCC(faultyDataIF,testClassOCC,modelIF,figName='Isolation_forest',xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+        cmIF, timeIF = doOCC(modelIF, testData, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmIF, timeIF, plotTest)
 
 
         #Auto encoder
@@ -348,14 +319,6 @@ for trainSetNumber in trainRange:
         
         print('\nACCURACY for trainSet ' + str(trainSetNumber) + ' in test set ' + str(testSetNumber) + '\n')
 
-
-
-
-predictionResult2 = np.array([predictionResult, classOCSVM])
-predictionResult2 = predictionResult2.transpose()
-
-predictionResultLOF2 = np.array([predictionResultLOF, classLOF])
-predictionResultLOF2 = predictionResultLOF2.transpose()
 
 
 
