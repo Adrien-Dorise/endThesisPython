@@ -20,7 +20,6 @@ import os
 
 
 # Timer class
-import time
 class Timer():  
     def __enter__(self):  
         self.start()   
@@ -117,7 +116,7 @@ def doRupture(model, data, timeSeries, classes, faultValue, rupturePenalty, cm, 
             points = np.array(faultyDataTemp[indices1,0].mean(),ndmin=2)
             for featureColumn in range(1,faultyDataTemp.shape[1]):
                 points = np.append(points,np.array(faultyDataTemp[indices1,featureColumn].mean(),ndmin=2),axis=1)
-                tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,modelKnn,faultValue=1,classif=True)
+                tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,model,faultValue=faultValue,classif=True)
                 cm = np.add(cm ,tempCM)
     time.append(timer.interval) 
     return cm,time
@@ -142,10 +141,7 @@ windowSize = 10
 rupturePenalty = 0.8
 faultValue = 1
 
-watchDogThreshold = 78
-classifierChoice = 'Knn' # 'Knn', 'svm', 'decision_tree_classifier, 'random_forest_classifier', 'naive_bayes'
-clusteringChoice = 'Kmeans' # 'Kmeans', 'HC'
-n_clusters = 4
+
 
 trainParamRange =  range(1,1+1)
 testParamRange = range(1,1+1)
@@ -161,39 +157,33 @@ plotDiagPerPoints = 0
 plotAccuracyPerMethods = 0
 plotAccuracyAllSets = 0
 
-plotTrain=0
-plotTest=0
 
 save = 0
 
 
 
-
-
-
-
-data=pd.DataFrame()
-classificationList = ['Knn', 'naive_bayes', 'decision_tree_classifier', 'random_forest_classifier','svm']
-classificationName = ['Knn', 'Naive_Bayes', 'Decision tree', 'Random Forest','SVM']
-colors = ['green','red']
-className = ['Normal','','','','','latch','front de latch up']
 if save == 1 or saveResult == 1:
     inp = input('The parameter save equal 1. Do you really wish to save the datas (might overwritte older files)?\nY or N ?\n')
     if (inp == 'N' or inp == 'n' or inp == 'no' or inp == 'No'):
         sys.exit()
 
 
-#accuracyPerPoint1 is the accuracy per points for each method listed in classificationList
-#accuracyPerPoint2 is the confusion matrix per points for each method listed in classificationList
-#accuracyRupture gives the accuracy per point for each method
-#accuracyXtotal gives total accuracy for all methods listed and for multiple training sets
 
-
-
+scaler = MinMaxScaler(feature_range=(0,1))
+data=pd.DataFrame()
+classificationList = ['OCSVM', 'elliptic classification', 'LOF', 'isolation forest']
+classificationName = ['OCSVM', 'Elliptic classification', 'LOF', 'Isolation forest']
+colors = ['green','red','blue','blue','blue','blue','blue','blue','blue','blue',]
+className = ['normal','latch','','','','latch','front de latch up']
 
 #Classification
 
 #Finding Best parameters for each algorithm
+
+#accuracyPerPoint1 is the accuracy per points for each method listed in classificationList
+#accuracyPerPoint2 is the confusion matrix per points for each method listed in classificationList
+#accuracyRupture gives the accuracy per point for each method
+#accuracyXtotal gives total accuracy for all methods listed and for multiple training sets
 
 kParam = [1,2,3,4,5,6,7,8,9,20,50,100,7000]
 forestParam=[10,25,50,75,100,125,150,175,200,225,250,275,300]
@@ -265,12 +255,7 @@ timePerPointBayes,timeRuptBayes = [], []
 timePerPointTree,timeRuptTree = [], []
 timePerPointForest,timeRuptForest = [], [] 
 
-scaler = MinMaxScaler(feature_range=(0,1))
 
-classificationList = ['OCSVM', 'elliptic classification', 'LOF', 'isolation forest']
-classificationName = ['OCSVM', 'Elliptic classification', 'LOF', 'Isolation forest']
-colors = ['green','red','blue','blue','blue','blue','blue','blue','blue','blue',]
-className = ['normal','latch','','','','latch','front de latch up']
 
 #Accuracy comparison for all methods
 for trainSetNumber in trainRange:
@@ -284,7 +269,7 @@ for trainSetNumber in trainRange:
         diag.plotLabelPoints(diagTrainScale1, trainClass, className,figName='trainSet',colors=colors,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
     
     if bigLatch:
-        trainClass = getLabel(trainClass,faultValue=1,windowSize=windowSize)
+        trainClass = getLabel(trainClass,faultValue=faultValue,windowSize=windowSize)
     
     k=9
     modelKnn,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'Knn',knn_n_neighbors=k,figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)

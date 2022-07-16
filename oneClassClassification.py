@@ -28,7 +28,6 @@ import os
 # tf.debugging.set_log_device_placement(True)
 
 # Timer class
-import time
 class Timer():  
     def __enter__(self):  
         self.start()   

@@ -12,8 +12,6 @@ import time
 
 
 
-# Timer class
-import time
 class Timer():  
     def __enter__(self):  
         self.start()   
@@ -36,7 +34,7 @@ class Timer():
 
 
 def getLabel(labels, faultValue, windowSize):
-    parameter = 5 #Can be changed to modify number of labels modified in the sliding window
+    parameter = windowSize / 2 #the number of fault lable to be found in the timeWindow to modify all labels of time window
     
     tempLabels = labels.copy()
     for i in range(len(labels)):
@@ -71,7 +69,7 @@ def anomalyRemoval(faultyDataSet,normalDataSet,labelArray,faultValue,iteration,w
     
     for j in range(lastNormalIteration,lastFaultIteration):
         faultyDataSet[j,:] = normalDataSet[j,:]
-        labelArray[j] = 100
+        labelArray[j] = 1
     
     return faultyDataSet, labelArray
 
@@ -87,20 +85,77 @@ def modifyDyclee(g_size):
     file.close()
 
 
+def doClustering(model,data):
+    return 1
+
+def doClassifPerPoint(model, data, classes, faultValue, cm, time, plot):
+    with Timer() as timer:
+        # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
+        # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
+        # faultyDataTemp = diagTestScale1
+        faultyDataTemp = data.copy()
+        # classTemp = testClassClassif.copy()
+        classTemp = classes.copy()
+        for i in range(len(faultyDataTemp[:,0])):
+            tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],model,faultValue=faultValue,classif=True)
+            # if(tempPred == -1 and classTemp[i] == 1):
+            #     faultyDataTemp, classTemp = anomalyRemoval(faultyDataTemp,diagNormalScale,classTemp,1,i,windowSize)
+            cm = np.add(cm ,tempCM)
+    time.append(timer.interval)
+    if(plot):
+        diag.plotClassification(faultyDataTemp,classTemp,model,figName='KNN',xlabel='X',ylabel='Y',save=save,folderPath=savePath)
+    return cm,time
+
+
+def doClassifRupture(model, data, timeSeries, classes, faultValue, rupturePenalty, cm, time, plot) :
+    with Timer() as timer: #Rupture
+        # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
+        # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
+        # faultyDataTemp = diagTestScale1
+        faultyDataTemp = data.copy()
+        # classTemp = testClassClassif.copy()
+        classTemp = classes.copy()
+        timeRuptureAlgo,timeRuptureBreakPoints,timeRuptureDataBreak = diag.timeRupture(timeSeries[:,2],penaltyValue=rupturePenalty,plot=plot)
+        for i in range(len(timeRuptureBreakPoints)-1):
+            indices1 = [timeRuptureBreakPoints[i],timeRuptureBreakPoints[i+1]]   
+            classValue1 = diag.getClass(indices1,classTemp)   #getting the real class for the set of points
+            points = np.array(faultyDataTemp[indices1,0].mean(),ndmin=2)
+            for featureColumn in range(1,faultyDataTemp.shape[1]):
+                points = np.append(points,np.array(faultyDataTemp[indices1,featureColumn].mean(),ndmin=2),axis=1)
+                tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,model,faultValue=faultValue,classif=True)
+                cm = np.add(cm ,tempCM)
+    time.append(timer.interval) 
+    return cm,time
+
+
+
+
+
 
 # 'H:\\DIAG_RAD\\Programs\\Diagnostic_python\\DiagnosticExample\\ExampleDataSets\\AllDefectAdded.txt'
 # 'H:\\DIAG_RAD\\Programs\\Diagnostic_python\\DiagnosticExample\\ExampleDataSets\\All16.txt'
 
 dataChoice = 1 #1 for simulated data: 2 for real datas
-trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet"
-testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\microLatch"
+trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet\\DestructiveLatch"
+testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\DestructiveLatch"
+savePathFolder = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\multiple_testSets\\3classes\\mean_variance_trainSet'
 resultPath = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\Accuracy\\clusteringAllStats\\test4'
-dataIndice = 1
-diagDataChoice = 6 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq)
+
+diagDataChoice = 1 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq)
+
+addNewLatchClass = 0
+bigLatch = False #Adjust the labels in the time window
+windowSize = 10
+rupturePenalty = 0.8
+faultValue = 1
+classifModelSelection = "svm"
+
 dataName = 'testSet'
-dataRange = range(1,1+1)
-testRange =  range(1,1+1)
-dataParamRange =  range(1,10+1)
+trainRange = range(1,1+1)
+testRange = range(1,1+1)
+dataParamRange =  range(1,1+1)
+
+
 penaltyValue = 25
 ratioPenalty = 10
 
@@ -108,25 +163,34 @@ saveResult = 0
 save=0
 
 
-dataChoice = 1 #1 for simulated data: 2 for real datas
 savePath = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\multiple_testSets\\3classes\\mean_variance_trainSet'
-n_clusters = 3
-epsilon = 0.1
-plotClustering = 0
+
+plotClustering = 1
 plotParallelFeatures = 0
 
+plotFeatures = 0
+plotClassification = 0
+plotDiagRupture = 0
+plotDiagPerPoints = 0
+
+plotTrain=0
+plotTest=0
 
 
 
-#Init somoe parameters
-classificationList = ['Knn', 'naive_bayes', 'decision_tree_classifier', 'random_forest_classifier','svm']
-classificationName = ['Knn', 'Naive_Bayes', 'Decision tree', 'Random Forest','SVM']
-colors = ['green','red']
-className = ['normal','','','','','latch','front de latch up']
+
+#Init some parameters
 if save == 1 or saveResult == 1:
     inp = input('The parameter save equal 1. Do you really wish to save the datas (might overwritte older files)?\nY or N ?\n')
     if (inp == 'N' or inp == 'n' or inp == 'no' or inp == 'No'):
         sys.exit()
+
+scaler = MinMaxScaler(feature_range=(0,1))
+data=pd.DataFrame()
+classificationList = ['OCSVM', 'elliptic classification', 'LOF', 'isolation forest']
+classificationName = ['OCSVM', 'Elliptic classification', 'LOF', 'Isolation forest']
+colors = ['green','red','blue','blue','blue','blue','blue','blue','blue','blue',]
+className = ['normal','latch','','','','latch','front de latch up']
 
 
 
@@ -237,128 +301,116 @@ accuracyClassifRuptKmeans,accuracyClassifRuptHC,accuracyClassifRuptDB,accuracyCl
 cmPerPointKmeans,cmRuptKmeans = [0,0,0,0], [0,0,0,0] #TP,FP,FN,TN
 cmPerPointHC,cmRuptHC = [0,0,0,0], [0,0,0,0] #TP,FP,FN,TN
 cmPerPointDBSCAN,cmRuptDBSCAN = [0,0,0,0], [0,0,0,0] #TP,FP,FN,TN
-cmPerPointDyclee,cmRuptDyclee = [0,0,0,0], [0,0,0,0] #TP,FP,FN,TN
+cmPerPointDyClee,cmRuptDyClee = [0,0,0,0], [0,0,0,0] #TP,FP,FN,TN
+
+timePerPointKmeans,timeRuptKmeans = [], [] 
+timePerPointHC,timeRuptHC = [], [] 
+timePerPointDBSCAN,timeRuptDBSCAN = [], []
+timePerPointDyClee,timeRuptDyClee = [], []
+
 
 i=0
 j=0
-for indice in dataRange:
-    dataIndice = indice
-    print('Indice number ' + str(indice))
-    timeSerie, features,dataClustering,classClustering, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, dataIndice = dataIndice, dataName = dataName,diagDataChoice = diagDataChoice)
+for trainSetNumber in trainRange:
+    savePath = savePathFolder + str(trainSetNumber)
+    data=data.append(diag.ifacDataFrame('train'+str(trainSetNumber)))
+    trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, dataIndice = trainSetNumber,dataChoice = dataChoice,windowSize=windowSize, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
+    trainClass[np.where(trainClass == 5)[0]] = 1 
+    trainScale = scaler.fit_transform(trainData[:,2].reshape(-1,1))
+    # diagTrainScale1 = diag.statExtraction(trainScale,windowSize,diagDataChoice)
+    if(plotFeatures):
+        diag.plotLabelPoints(diagTrainScale1, trainClass, className,figName='trainSet',colors=colors,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
     
+    if bigLatch:
+        trainClass = getLabel(trainClass,faultValue=faultValue,windowSize=windowSize)
+        
+    n_clusters = 3
+    modelClustKmeans,testKmeans,testKmeans = diag.clustering(diagTrainScale1,'Kmeans',n_clusters=n_clusters,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+    accuracyKmeans,classKmeans = diag.clustertingExpertOpinion(trainData,modelClustKmeans.labels_,trainClass,figName = 'Kmeans')
+    modelClassifKmeans,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,classKmeans,classifModelSelection)
     
+    n_clusters = 3
+    modelClustHC,testHC,testHC = diag.clustering(diagTrainScale1,'HC',n_clusters=n_clusters,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+    accuracyHC,classHC = diag.clustertingExpertOpinion(trainData,modelClustHC.labels_,trainClass,figName = 'HC')
+    modelClassifHC,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,classHC,classifModelSelection)
     
-    
-    clusteringChoice = 'Kmeans'
-    testCluster1,testResult1,testPredict1 = diag.clustering(dataClustering,clusteringChoice,epsilon= epsilon,n_clusters=n_clusters,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
-    accuracyCluster1,clusterClass1 = diag.doResultClustering(timeSerie,testCluster1.labels_,classClustering,figName = clusteringChoice)
-    accuracyKmeans.append(accuracyCluster1)
-    #We apply best classification
-    accuracyPerPoint=[]
-    accuracyRupture=[]
-    for testSetNumber in testRange:
-        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,save=save)
-        featureName = featureChoice
-        classifierChoice = 'svm'
-        trainClassifi1,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(dataClustering,clusterClass1,classifierChoice)
-        accuracyPerPointTemp,accuracyRuptureTemp,cmPerPoint,cmRupture = diag.doResultClassification(testData,diagTestScale1,testClass,trainClassifi1)
-        accuracyPerPoint.append(accuracyPerPointTemp)
-        accuracyRupture.append(accuracyRuptureTemp)
-        for j in range(len(cmRupture)):
-            cmRuptKmeans[j] += cmRupture[j] 
-            cmPerPointKmeans[j] += cmPerPoint[j]
-    accuracyClassifKmeans.append(np.mean(accuracyPerPoint))
-    accuracyClassifRuptKmeans.append(np.mean(accuracyRuptureTemp))
-    
-    
-    clusteringChoice = 'HC'
-    testCluster1,testResult1,testPredict1 = diag.clustering(dataClustering,clusteringChoice,epsilon= epsilon,n_clusters=n_clusters,metric='cosine',figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
-    accuracyCluster2,clusterClass2 = diag.doResultClustering(timeSerie,testCluster1.labels_,classClustering,figName = clusteringChoice)
-    accuracyHC.append(accuracyCluster2)
-    accuracyPerPoint=[]
-    accuracyRupture=[]
-    if len(np.unique(clusterClass2)) <=1:
-        clusterClass2[0]=5
-    for testSetNumber in testRange:
-        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,save=save)
-        featureName = featureChoice
-        classifierChoice = 'svm'
-        trainClassifi1,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(dataClustering,clusterClass2,classifierChoice)
-        accuracyPerPointTemp,accuracyRuptureTemp,cmPerPoint,cmRupture = diag.doResultClassification(testData,diagTestScale1,testClass,trainClassifi1)
-        accuracyPerPoint.append(accuracyPerPointTemp)
-        accuracyRupture.append(accuracyRuptureTemp)
-        for j in range(len(cmRupture)):
-            cmRuptHC[j] += cmRupture[j] 
-            cmPerPointHC[j] += cmPerPoint[j]
-    accuracyClassifHC.append(np.mean(accuracyPerPoint))
-    accuracyClassifRuptHC.append(np.mean(accuracyRuptureTemp))
-    
-    
-    clusteringChoice = 'DBSCAN'
     epsilon = 0.08
     metric='cosine'
-    testCluster1,testResult1,testPredict1 = diag.clustering(dataClustering,clusteringChoice,epsilon= epsilon,n_clusters=n_clusters,metric= metric, figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
-    accuracyCluster3,clusterClass3 = diag.doResultClustering(timeSerie,testCluster1.labels_,classClustering,figName = clusteringChoice)
-    accuracyDB.append(accuracyCluster3)
-    scoreDB.append(diag.clusterScore(accuracyDB[i],len(np.unique(classClustering)),len(np.unique(testCluster1.labels_)),ratioPenalty,penaltyValue))
-    accuracyPerPoint=[]
-    accuracyRupture=[]
-    if len(np.unique(clusterClass3)) <=1:
-        clusterClass3[0]=5
-    for testSetNumber in testRange:
-        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,save=save)
-        featureName = featureChoice
-        classifierChoice = 'svm'
-        trainClassifi1,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(dataClustering,clusterClass3,classifierChoice)
-        accuracyPerPointTemp,accuracyRuptureTemp,cmPerPoint,cmRupture = diag.doResultClassification(testData,diagTestScale1,testClass,trainClassifi1)
-        accuracyPerPoint.append(accuracyPerPointTemp)
-        accuracyRupture.append(accuracyRuptureTemp)
-        for j in range(len(cmRupture)):
-            cmRuptDBSCAN[j] += cmRupture[j] 
-            cmPerPointDBSCAN[j] += cmPerPoint[j]
+    modelClustDBSCAN,testDBSCAN,testDBSCAN = diag.clustering(diagTrainScale1,'DBSCAN',epsilon= epsilon,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+    accuracyDBSCAN,classDBSCAN = diag.clustertingExpertOpinion(trainData,modelClustDBSCAN.labels_,trainClass,figName = 'DBSCAN')
+    if len(np.unique(classDBSCAN)) <=1:
+        classDBSCAN[0]=1
+    modelClassifDBSCAN,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,classDBSCAN,classifModelSelection)
     
-    accuracyClassifDB.append(np.mean(accuracyPerPoint))
-    accuracyClassifRuptDB.append(np.mean(accuracyRuptureTemp))
-    scoreClassifDB.append(diag.clusterScore(accuracyClassifDB[i],len(np.unique(classClustering)),len(np.unique(testCluster1.labels_)),ratioPenalty,penaltyValue))
-    scoreClassifRuptDB.append(diag.clusterScore(accuracyClassifRuptDB[i],len(np.unique(classClustering)),len(np.unique(testCluster1.labels_)),ratioPenalty,penaltyValue))
-    
-    
-    #DyClee
     #Call Dyclee
     print('\nDyClee in progress...')
-    modifyDyclee('0.120')
-    scaler = preprocessing.MinMaxScaler()
-    normalized_X = scaler.fit_transform(dataClustering)
+    modifyDyclee('0.05')
+    scalerDyClee = preprocessing.MinMaxScaler()
+    normalized_X = scalerDyClee.fit_transform(diagTrainScale1)
     np.savetxt('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\data\\data.dat',normalized_X,delimiter=',')
     os.system('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\DyClee H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\file.txt')
     #Use Dyclee class in Python
     DycleeClass = np.genfromtxt('H:\\DIAG_RAD\\Results\\Diagnostic\\DyClee\\DycleeResult.dat',dtype=int)
     DycleeClass = np.subtract(DycleeClass, np.ones(len(DycleeClass),dtype=int))
-    while len(DycleeClass) < len(classClustering):
+    while len(DycleeClass) < len(trainClass):
         DycleeClass = np.append(DycleeClass,DycleeClass[len(DycleeClass)-1])
-    accuracyCluster4,clusterClass4 = diag.doResultClustering(dataClustering,DycleeClass,classClustering,figName = 'DyClee')
-    accuracyDyclee.append(accuracyCluster4)
-    scoreDyclee.append(diag.clusterScore(accuracyDyclee[i],len(np.unique(classClustering)),len(np.unique(DycleeClass)),ratioPenalty,penaltyValue))
-    print('DyClee done !\n')
-    accuracyPerPoint=[]
-    accuracyRupture=[]
-    if len(np.unique(clusterClass4)) <=1:
-        clusterClass4[0]=5
+    accuracyDyClee,classDyClee = diag.clustertingExpertOpinion(diagTrainScale1,DycleeClass,trainClass,figName = 'DyClee')
+    if len(np.unique(classDyClee)) <=1:
+        classDyClee[0]=1
+    modelClassifDyClee,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,classDyClee,classifModelSelection)
+    
+
+    
+    
     for testSetNumber in testRange:
-        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = testDataPath, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = 'testSet',diagDataChoice = diagDataChoice,save=save)
+        
+        #Import Data
+        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel = diag.preprocessing(dataColumnChoice = 2, dataPath = testDataPath, windowSize=windowSize, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = ' ',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
         featureName = featureChoice
-        classifierChoice = 'svm'
-        trainClassifi1,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(dataClustering,clusterClass4,classifierChoice)
-        accuracyPerPointTemp,accuracyRuptureTemp,cmPerPoint,cmRupture = diag.doResultClassification(testData,diagTestScale1,testClass,trainClassifi1)
-        accuracyPerPoint.append(accuracyPerPointTemp)
-        accuracyRupture.append(accuracyRuptureTemp)
-        for j in range(len(cmRupture)):
-            cmRuptDyclee[j] += cmRupture[j] 
-            cmPerPointDyclee[j] += cmPerPoint[j]
-    accuracyClassifDyclee.append(np.mean(accuracyPerPoint))
-    accuracyClassifRuptDyclee.append(np.mean(accuracyRupture))
-    scoreClassifDyclee.append(diag.clusterScore(accuracyClassifDyclee[i],len(np.unique(classClustering)),len(np.unique(DycleeClass)),ratioPenalty,penaltyValue))
-    scoreClassifRuptDyclee.append(diag.clusterScore(accuracyClassifRuptDyclee[i],len(np.unique(classClustering)),len(np.unique(DycleeClass)),ratioPenalty,penaltyValue))
+        faultySetScale = scaler.transform(testData[:,2].reshape(-1,1))
+        normalSet = scaler.transform(testData[:,1].reshape(-1,1))
+        diagNormalScale = diag.statExtraction(normalSet,windowSize,diagDataChoice)
+        testClassClassif = testClass.copy()
+        testClassClassif[np.where(testClassClassif != 5)[0]] = 0
+        testClassClassif[np.where(testClassClassif == 5)[0]] = 1
+        
+        #!!!!!!This function is to be used when the fault value is too important and mess up witht the sliding window!!!!!!!!!!!!!!!!!!!!!
+        # if bigLatch:
+        #     testClassClassif = getLabel(testClassClassif,faultValue=1,windowSize=windowSize)
+    
+    
+    
+    clusteringChoice = 'Kmeans'
+    cmPerPointKmeans,timePerPointKmeans = doClassifPerPoint(modelClassifKmeans, diagTestScale1, testClassClassif, faultValue,cmPerPointKmeans,timePerPointKmeans, plotDiagPerPoints)
+    cmRuptKmeans,timeRuptKmeans = doClassifRupture(modelClassifKmeans, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptKmeans, timeRuptKmeans, plotDiagPerPoints)
+    
+    
+    
+    clusteringChoice = 'HC'
+    cmPerPointHC,timePerPointHC = doClassifPerPoint(modelClassifHC, diagTestScale1, testClassClassif, faultValue,cmPerPointHC,timePerPointHC, plotDiagPerPoints)
+    cmRuptHC,timeRuptHC = doClassifRupture(modelClassifHC, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptHC, timeRuptHC, plotDiagPerPoints)
+    
+    
+    
+    clusteringChoice = 'DBSCAN'
+    cmPerPointDBSCAN,timePerPointDBSCAN = doClassifPerPoint(modelClassifDBSCAN, diagTestScale1, testClassClassif, faultValue,cmPerPointDBSCAN,timePerPointDBSCAN, plotDiagPerPoints)
+    cmRuptDBSCAN,timeRuptDBSCAN = doClassifRupture(modelClassifDBSCAN, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptDBSCAN, timeRuptDBSCAN, plotDiagPerPoints)
+    
+    
+    # accuracyClassifDB.append(np.mean(accuracyPerPoint))
+    # accuracyClassifRuptDB.append(np.mean(accuracyRuptureTemp))
+    # scoreClassifDB.append(diag.clusterScore(accuracyClassifDB[i],len(np.unique(classClustering)),len(np.unique(testCluster1.labels_)),ratioPenalty,penaltyValue))
+    # scoreClassifRuptDB.append(diag.clusterScore(accuracyClassifRuptDB[i],len(np.unique(classClustering)),len(np.unique(testCluster1.labels_)),ratioPenalty,penaltyValue))
+    
+    
+    #DyClee
+    cmPerPointDyClee,timePerPointDyClee = doClassifPerPoint(modelClassifDyClee, diagTestScale1, testClassClassif, faultValue,cmPerPointDyClee,timePerPointDyClee, plotDiagPerPoints)
+    cmRuptDyClee,timeRuptDyClee = doClassifRupture(modelClassifDyClee, diagTestScale1, testData, testClassClassif, faultValue, rupturePenalty, cmRuptDyClee, timeRuptDyClee, plotDiagPerPoints)
+    
+    # accuracyClassifDyclee.append(np.mean(accuracyPerPoint))
+    # accuracyClassifRuptDyclee.append(np.mean(accuracyRupture))
+    # scoreClassifDyclee.append(diag.clusterScore(accuracyClassifDyclee[i],len(np.unique(classClustering)),len(np.unique(DycleeClass)),ratioPenalty,penaltyValue))
+    # scoreClassifRuptDyclee.append(diag.clusterScore(accuracyClassifRuptDyclee[i],len(np.unique(classClustering)),len(np.unique(DycleeClass)),ratioPenalty,penaltyValue))
 
     i=i+1
 
@@ -413,36 +465,77 @@ if saveResult:
 
 #Plot accuracy all sets
 
-accuracyClassifKmeansPlot = np.mean(accuracyClassifRuptKmeans)
-accuracyClassifHCPlot = np.mean(accuracyClassifHC)
-accuracyClassifDBPlot = np.mean(accuracyClassifDB)
-accuracyClassifDycleePlot = np.mean(accuracyClassifDyclee)
+totalPerPoint = cmPerPointKmeans[0] + cmPerPointKmeans[1] + cmPerPointKmeans[2] + cmPerPointKmeans[3]
 
-accuracyClassifRuptKmeansPlot = np.mean(accuracyClassifRuptKmeans)
-accuracyClassifRuptHCPlot = np.mean(accuracyClassifRuptHC)
-accuracyClassifRuptDBPlot = np.mean(accuracyClassifRuptDB)
-accuracyClassifRuptDycleePlot = np.mean(accuracyClassifRuptDyclee)
 
-clusteringList = ['Kmeans', 'Hierarchical Clustering', 'DBSCAN', 'DyClee']
-clustersAccuracy = [accuracyCluster1,accuracyCluster2,accuracyCluster3,accuracyCluster4]
-classiAccuracyPerPoint = [accuracyClassifKmeansPlot,accuracyClassifHCPlot,accuracyClassifDBPlot,accuracyClassifDycleePlot]
-classiAccuracyRupt = [accuracyClassifRuptKmeansPlot,accuracyClassifRuptHCPlot,accuracyClassifRuptDBPlot,accuracyClassifRuptDycleePlot]
-fig1,axs = plt.subplots()
-xAxis = range(0,len(clusteringList))
-plt.plot(xAxis,clustersAccuracy,label = 'clustering');
-plt.plot(xAxis,classiAccuracyPerPoint,label = 'perPoint');
-plt.plot(xAxis,classiAccuracyRupt,label = 'Rupture');
-plt.title('Clustering algorithms accuracy '+ str(dataName)+ ' ' + str(dataIndice))
-plt.xlabel('Clustering algorithm')
-plt.ylabel('Accuracy')
-plt.ylim(ymax=1)
-plt.grid();
-plt.legend();
-axs.set_xticks(range(0,len(clusteringList)));
-axs.set_xticklabels(clusteringList);
-diag.saveFigure(save,savePath,'/Classification_accuracy_'+ str(dataIndice)+ '_test_sets.png');
-plt.show()
+cmPercentPerPointKmeans= [100*cmPerPointKmeans[0]/totalPerPoint, 100*cmPerPointKmeans[1]/totalPerPoint, 100*cmPerPointKmeans[2]/totalPerPoint, 100*cmPerPointKmeans[3]/totalPerPoint]
+cmPercentPerPointHC= [100*cmPerPointHC[0]/totalPerPoint, 100*cmPerPointHC[1]/totalPerPoint, 100*cmPerPointHC[2]/totalPerPoint, 100*cmPerPointHC[3]/totalPerPoint]
+cmPercentPerPointDBSCAN= [100*cmPerPointDBSCAN[0]/totalPerPoint, 100*cmPerPointDBSCAN[1]/totalPerPoint, 100*cmPerPointDBSCAN[2]/totalPerPoint, 100*cmPerPointDBSCAN[3]/totalPerPoint]
+cmPercentPerPointDyClee= [100*cmPerPointDyClee[0]/totalPerPoint, 100*cmPerPointDyClee[1]/totalPerPoint, 100*cmPerPointDyClee[2]/totalPerPoint, 100*cmPerPointDyClee[3]/totalPerPoint]
 
+totalPointRupture = cmRuptKmeans[0] + cmRuptKmeans[1] + cmRuptKmeans[2] + cmRuptKmeans[3]
+cmPercentRuptKmeans= [100*cmRuptKmeans[0]/totalPointRupture, 100*cmRuptKmeans[1]/totalPointRupture, 100*cmRuptKmeans[2]/totalPointRupture, 100*cmRuptKmeans[3]/totalPointRupture]
+totalPointRupture = cmRuptHC[0] + cmRuptHC[1] + cmRuptHC[2] + cmRuptHC[3]
+cmPercentRuptHC= [100*cmRuptHC[0]/totalPointRupture, 100*cmRuptHC[1]/totalPointRupture, 100*cmRuptHC[2]/totalPointRupture, 100*cmRuptHC[3]/totalPointRupture]
+totalPointRupture = cmRuptDBSCAN[0] + cmRuptDBSCAN[1] + cmRuptDBSCAN[2] + cmRuptDBSCAN[3]
+cmPercentRuptDBSCAN= [100*cmRuptDBSCAN[0]/totalPointRupture, 100*cmRuptDBSCAN[1]/totalPointRupture, 100*cmRuptDBSCAN[2]/totalPointRupture, 100*cmRuptDBSCAN[3]/totalPointRupture]
+totalPointRupture = cmRuptDyClee[0] + cmRuptDyClee[1] + cmRuptDyClee[2] + cmRuptDyClee[3]
+cmPercentRuptDyClee= [100*cmRuptDyClee[0]/totalPointRupture, 100*cmRuptDyClee[1]/totalPointRupture, 100*cmRuptDyClee[2]/totalPointRupture, 100*cmRuptDyClee[3]/totalPointRupture]
+
+
+meanTimePerPointKmeans = sum(timePerPointKmeans)/len(timePerPointKmeans)
+meanTimeRuptKmeans = sum(timeRuptKmeans)/len(timeRuptKmeans)
+meanTimePerPointHC = sum(timePerPointHC)/len(timePerPointHC)
+meanTimeRuptHC = sum(timeRuptHC)/len(timeRuptHC)
+meanTimePerPointDBSCAN = sum(timePerPointDBSCAN)/len(timePerPointDBSCAN)
+meanTimeRuptDBSCAN = sum(timeRuptDBSCAN)/len(timeRuptDBSCAN)
+meanTimePerPointDyClee = sum(timePerPointDyClee)/len(timePerPointDyClee)
+meanTimeRuptDyClee = sum(timeRuptDyClee)/len(timeRuptDyClee)
+
+print("Train set: " + trainDataPath)
+print("Test set: " + testDataPath)
+print("TP FP FN TN")
+
+print("\nKmeans:")
+print("PerPoint")
+print(cmPerPointKmeans)
+print(cmPercentPerPointKmeans)
+print("mean time: " + str(meanTimePerPointKmeans))
+print("Rupture:")
+print(cmRuptKmeans)
+print(cmPercentRuptKmeans)
+print("mean time: " + str(meanTimeRuptKmeans))
+
+print("\nHC:")
+print("PerPoint")
+print(cmPerPointHC)
+print(cmPercentPerPointHC)
+print("mean time: " + str(meanTimePerPointHC))
+print("Rupture:")
+print(cmRuptHC)
+print(cmPercentRuptHC)
+print("mean time: " + str(meanTimeRuptHC))
+
+
+print("\nDBSCAN:")
+print("PerPoint")
+print(cmPerPointDBSCAN)
+print(cmPercentPerPointDBSCAN)
+print("mean time: " + str(meanTimePerPointDBSCAN))
+print("Rupture:")
+print(cmRuptDBSCAN)
+print(cmPercentRuptDBSCAN)
+print("mean time: " + str(meanTimeRuptDBSCAN))
+
+print("\nDyClee:")
+print("PerPoint")
+print(cmPerPointDyClee)
+print(cmPercentPerPointDyClee)
+print("mean time: " + str(meanTimePerPointDyClee))
+print("Rupture:")
+print(cmRuptDyClee)
+print(cmPercentRuptDyClee)
+print("mean time: " + str(meanTimeRuptDyClee))
 
 
 

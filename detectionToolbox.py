@@ -2433,7 +2433,7 @@ def statExtraction(timeSerieScale,windowSize,diagDataChoice):
     
     
 
-def doResultClustering(timeSerie,clusterPredict,realClass,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='resultClustering'):
+def clustertingExpertOpinion(timeSerie,clusterPredict,realClass,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='resultClustering'):
     
     #Plotting on timeSerie
     if plot:
@@ -2455,7 +2455,7 @@ def doResultClustering(timeSerie,clusterPredict,realClass,plot=0,xlabel='X',ylab
         i=i+1
         j=0
     
-    #Plotting of occurence of each predicito for each class
+    #Plotting of occurence of each prediction for each class
     #CANNOT PLOT MORE THAN 2 CLASSES, REWRITE TO AVOID THIS PROBLEM 
     if plot:
         i=0
@@ -2525,6 +2525,42 @@ def doResultClustering(timeSerie,clusterPredict,realClass,plot=0,xlabel='X',ylab
 
 
 
+
+
+
+def ifacDataFrame (index = 'index0'):
+    return pd.DataFrame(index = [index], 
+                        columns=['test used', 'knn time', 'knn accuracy','knn k','knn weight','knn metric',
+                             'svm time', 'svm accuracy','svm kernel','svm gamma','svm weigth',
+                             'decision tree time', 'decision tree accuracy','decision tree criterion','decision tree splitter','decision tree min split',
+                             'random forest time', 'random forest accuracy','random forest estimators','random forest criterion','random forest min split',
+                             'kmeans time', 'kmeans accuracy','kmeans n cluster','kmeans init','kmeans n init', 'kmeans max iter',
+                             'HC time', 'HC accuracy','HC n cluster','HC affinity','HC linkage',
+                             'svm time', 'svm accuracy','svm epsilon','svm min sample','svm distance',
+                             'dyclee time', 'dyclee accuracy','dyclee g_size','dyclee outlier rejection'])
+
+
+
+
+def clusterScore(accuracy,Nclass,Ncluster,RatioPenalty,penalty):
+    
+    function = float(math.exp(Ncluster/Nclass - RatioPenalty))
+    function = function ** (1.0/penalty)
+    if Ncluster == 1:
+        score = 0
+    if Ncluster/Nclass <= RatioPenalty:
+        score = accuracy
+    else:
+        score = float(accuracy/function)
+    return score
+
+
+
+
+
+
+
+'''
 
 
 def doResultClassification(testSerie,diagTestScale,realTestClass,classifier,plot=0,xlabel='X',ylabel='Y',folderPath='',save=0,figName='resultClassification',savePath='',classifierChoice='classification',featureChoice=''):
@@ -2681,42 +2717,7 @@ def doResultClassificationRupture(testSerie,diagTestScale,realTestClass,classifi
     
 
     return accuracyRupture, cmRupture
-
-
-def ifacDataFrame (index = 'index0'):
-    return pd.DataFrame(index = [index], 
-                        columns=['test used', 'knn time', 'knn accuracy','knn k','knn weight','knn metric',
-                             'svm time', 'svm accuracy','svm kernel','svm gamma','svm weigth',
-                             'decision tree time', 'decision tree accuracy','decision tree criterion','decision tree splitter','decision tree min split',
-                             'random forest time', 'random forest accuracy','random forest estimators','random forest criterion','random forest min split',
-                             'kmeans time', 'kmeans accuracy','kmeans n cluster','kmeans init','kmeans n init', 'kmeans max iter',
-                             'HC time', 'HC accuracy','HC n cluster','HC affinity','HC linkage',
-                             'svm time', 'svm accuracy','svm epsilon','svm min sample','svm distance',
-                             'dyclee time', 'dyclee accuracy','dyclee g_size','dyclee outlier rejection'])
-
-
-
-
-
-
-
-
-
-def clusterScore(accuracy,Nclass,Ncluster,RatioPenalty,penalty):
-    
-    function = float(math.exp(Ncluster/Nclass - RatioPenalty))
-    function = function ** (1.0/penalty)
-    if Ncluster == 1:
-        score = 0
-    if Ncluster/Nclass <= RatioPenalty:
-        score = accuracy
-    else:
-        score = float(accuracy/function)
-    return score
-
-
-
-
+'''
 
 
 
