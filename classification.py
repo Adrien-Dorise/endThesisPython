@@ -4,6 +4,8 @@
 
 import detectionToolbox as diag
 import numpy as np
+np.set_printoptions(threshold=np.inf)
+np.set_printoptions(linewidth=np.inf)
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
@@ -83,6 +85,7 @@ def anomalyRemoval(faultyDataSet,normalDataSet,labelArray,faultValue,iteration,w
 
 
 def doPerPoint(model, data, classes, faultValue, cm, time, plot):
+    interrupt = False
     with Timer() as timer:
         # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
         # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
@@ -91,9 +94,14 @@ def doPerPoint(model, data, classes, faultValue, cm, time, plot):
         # classTemp = testClassClassif.copy()
         classTemp = classes.copy()
         for i in range(len(faultyDataTemp[:,0])):
-            tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],model,faultValue=faultValue,classif=True)
-            # if(tempPred == -1 and classTemp[i] == 1):
-            #     faultyDataTemp, classTemp = anomalyRemoval(faultyDataTemp,diagNormalScale,classTemp,1,i,windowSize)
+            if(interrupt == False):
+                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],model,faultValue=faultValue,classif=True)
+                if(tempPred == -1 and classTemp[i] == 1):
+                    interrupt = True
+            else:
+                tempCM = [1,0,0,0]
+                if(classTemp[i] != 1):
+                    interrupt = False
             cm = np.add(cm ,tempCM)
     time.append(timer.interval)
     if(plot):
@@ -116,8 +124,8 @@ def doRupture(model, data, timeSeries, classes, faultValue, rupturePenalty, cm, 
             points = np.array(faultyDataTemp[indices1,0].mean(),ndmin=2)
             for featureColumn in range(1,faultyDataTemp.shape[1]):
                 points = np.append(points,np.array(faultyDataTemp[indices1,featureColumn].mean(),ndmin=2),axis=1)
-                tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,model,faultValue=faultValue,classif=True)
-                cm = np.add(cm ,tempCM)
+            tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,model,faultValue=faultValue,classif=True)
+            cm = np.add(cm ,tempCM)
     time.append(timer.interval) 
     return cm,time
     
@@ -133,22 +141,22 @@ savePathFolder = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\multiple_testSet
 resultPath = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\Accuracy\\classificationAllStats\\classi2'
 saveResult = 0
 
-doTestParam = True
-doTestClassif = False
-diagDataChoice = 1 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq); 6 all stats
+doTestParam = False
+doTestClassif = True
+diagDataChoice = 6 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq); 6 all stats
 
 addNewLatchClass = 0
 bigLatch = False #Adjust the labels in the time window
-windowSize = 10
+windowSize = 20
 rupturePenalty = 0.8
 faultValue = 1
 
 
 
-trainParamRange =  range(1,1+1)
-testParamRange = range(1,1+1)
-trainRange = range(1,1+1)
-testRange = range(1,1+1)
+trainParamRange =  range(1,5+1)
+testParamRange = range(1,10+1)
+trainRange = range(1,10+1)
+testRange = range(1,20+1)
 
 
 plotFeatures = 0
@@ -272,14 +280,21 @@ if doTestParam:
             accuracyParamForestPerPoint[trainSetNumber-1,i] = np.mean(accuracyTemp3[:,i])
             accuracyParamForestRupt[trainSetNumber-1,i] = np.mean(accuracyTemp4[:,i])
         
-        
+    
+    print("\nTrain set: " + trainDataPath)
+    print("Test set: " + testDataPath)
+    
+    print("\nMean accuracy parameters KNN")
+    print(kParam)
     for i in range(len(trainParamRange)):
-        print("Mean accuracy KNN for " + str(testSetNumber) + " test sets")
-        print(accuracyParamKnnPerPoint[i])
+        print("PerPoint: " + str(accuracyParamKnnPerPoint[i]))
+        print("Rupture: " + str(accuracyParamKnnRupt[i]))
+    
+    print("\nMean accuracy parameters Rand forest")
+    print(forestParam)
     for i in range(len(trainParamRange)):
-        print("Mean accuracy Forest for " + str(testSetNumber) + " test sets")
-        print(accuracyParamKnnPerPoint[i])
-        
+        print("PerPoint: " + str(accuracyParamForestPerPoint[i]))
+        print("Rupture: " + str(accuracyParamForestRupt[i]))
     
       
     
@@ -327,7 +342,7 @@ if doTestClassif:
         modelKnn,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'Knn',knn_n_neighbors=k,figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
         modelBayes,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'naive_bayes',figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
         modelTree,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'decision_tree_classifier',figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
-        ensemble = 25
+        ensemble = 50
         modelForest,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'random_forest_classifier',ensemble_estimators=ensemble,figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
         modelSVM,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,trainClass,'svm',figName='Train_Classif_'+featureChoice,plot=plotClassification,classesName=className,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath)
         
@@ -335,11 +350,11 @@ if doTestClassif:
         for testSetNumber in testRange:
             
             #Import Data
-            testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel = diag.preprocessing(dataColumnChoice = 2, dataPath = testDataPath, windowSize=windowSize, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = ' ',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
+            testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel = diag.preprocessing(dataPath = testDataPath, windowSize=windowSize, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = ' ',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
             featureName = featureChoice
             faultySetScale = scaler.transform(testData[:,2].reshape(-1,1))
             normalSet = scaler.transform(testData[:,1].reshape(-1,1))
-            diagNormalScale = diag.statExtraction(normalSet,windowSize,diagDataChoice)
+            # diagNormalScale = diag.statExtraction(normalSet,windowSize,diagDataChoice)
             testClassClassif = testClass.copy()
             testClassClassif[np.where(testClassClassif != 5)[0]] = 0
             testClassClassif[np.where(testClassClassif == 5)[0]] = 1
@@ -423,9 +438,12 @@ if doTestClassif:
     
     print("Train set: " + trainDataPath)
     print("Test set: " + testDataPath)
-    print("TP FP FN TN")
+    print('windowSize: ' + str(windowSize) + ' / RuptPenalty: ' + str(rupturePenalty)) 
+    print("\nTP FP FN TN")
     
-    print("\nKNN:")
+    
+    print("KNN:")
+    print('k: ' + str(k))
     print("PerPoint")
     print(cmPerPointKnn)
     print(cmPercentPerPointKnn)
@@ -458,6 +476,7 @@ if doTestClassif:
     print("mean time: " + str(meanTimeRuptTree))
     
     print("\nForest:")
+    print('ensemble: ' + str(ensemble))
     print("PerPoint")
     print(cmPerPointForest)
     print(cmPercentPerPointForest)

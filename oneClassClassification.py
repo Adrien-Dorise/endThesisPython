@@ -90,25 +90,43 @@ def anomalyRemoval(faultyDataSet,normalDataSet,labelArray,faultValue,iteration,w
     return faultyDataSet, labelArray
         
 
-def doOCC(model, data, normalData, classes, windowSize, diagDataChoice, cm, time, plot):
+def doOCC(model, data, normalData, classes, windowSize, diagDataChoice, cm, time, plot, faultValue=1):
+    interrupt = False
     with Timer() as timer:
-        faultyData = scaler.transform(data[:,2].reshape(-1,1))
-        faultyData = diag.statExtraction(faultyData,windowSize,diagDataChoice)
+        faultyDataTemp = data.copy()
         classTemp = classes.copy()
-        for i in range(len(faultyData[:,0])):
-            tempCM,tempPred = diag.confusionMatrixClassifier(faultyData[i,:],classTemp[i],model,1)
-            # print('i: ' + str(i) + ' / pred: ' + str(tempPred[0]) + ' / class: ' + str(classTemp[i]))
-            if(tempPred[0] == -1 and classTemp[i] == 1):
-                faultyData, classTemp = anomalyRemoval(faultyData,normalData,classTemp,1,i,windowSize)
+        for i in range(len(faultyDataTemp[:,0])):
+            if(interrupt == False):
+                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],model,faultValue=faultValue)
+                if(tempPred == -1 and classTemp[i] == 1):
+                    interrupt = True
+            else:
+                tempCM = [1,0,0,0]
+                if(classTemp[i] != 1):
+                    interrupt = False
             cm = np.add(cm ,tempCM)
-            predictionResult.append(tempPred[0])
     time.append(timer.interval)
-    if(plotTest):
-        diag.plotOCC(faultyData,testClassOCC,modelOCSVM,figName='OC_SVM',xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+    if(plot):
+        diag.plotClassification(faultyDataTemp,classTemp,model,figName='KNN',xlabel='X',ylabel='Y',save=save,folderPath=savePath)
+    return cm,time
 
-    return cm ,time
 
-
+def doOCCRupture(model, data, timeSeries, classes,  rupturePenalty, cm, time, plot=0, faultValue=1):
+    with Timer() as timer: #Rupture
+        faultyDataTemp = scaler.transform(data[:,2].reshape(-1,1))
+        faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
+        classTemp = classes.copy()
+        timeRuptureAlgo,timeRuptureBreakPoints,timeRuptureDataBreak = diag.timeRupture(timeSeries[:,2],penaltyValue=rupturePenalty,plot=plot)
+        for i in range(len(timeRuptureBreakPoints)-1):
+            indices1 = [timeRuptureBreakPoints[i],timeRuptureBreakPoints[i+1]]   
+            classValue1 = diag.getClass(indices1,classTemp)   #getting the real class for the set of points
+            points = np.array(faultyDataTemp[indices1,0].mean(),ndmin=2)
+            for featureColumn in range(1,faultyDataTemp.shape[1]):
+                points = np.append(points,np.array(faultyDataTemp[indices1,featureColumn].mean(),ndmin=2),axis=1)
+            tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,model,faultValue=faultValue,classif=True)
+            cm = np.add(cm ,tempCM)
+    time.append(timer.interval) 
+    return cm,time
             
 '''
 #One class classification tests (Code taken from Example folder)
@@ -199,7 +217,7 @@ cmAE = deep.confusionMatrixAE(prediction, testClassOCC)
 # dataPath = 'H:\\DIAG_RAD\\Programs\\Diagnostic_python\\DiagnosticExample\\ExampleDataSets'
 # savePath = 'H:\\DIAG_RAD\\Results\\Diagnostic\\Example\\example1' 
 dataChoice = 1 #1 for simulated data: 2 for real datas
-trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet\\microLatch"
+trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet\\noLatch"
 testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\microLatch"
 # dataPath = '/media/adrien/Adrien_Dorise_USB1/DIAG_RAD/DataSets/Simulation_Matlab/datasGenerator/DataExemple'
 savePathFolder = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2022\\multiple_testSets\\3classes\\mean_variance_trainSet'
@@ -207,11 +225,12 @@ resultPath = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2022\\Accuracy\\classifica
 saveResult = 0
 
 bigLatch = False #Adjust the labels in the time window
-diagDataChoice = 1 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq); 6 all stats
+diagDataChoice = 6 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq); 6 all stats
 windowSize = 20
+rupturePenalty = 0.8
 
-trainRange = range(1,1+1)
-testRange = range(1,1+1)
+trainRange = range(1,10+1)
+testRange = range(1,20+1)
 
 plotTrain=0
 plotTest=0
@@ -234,11 +253,13 @@ if save == 1 or saveResult == 1:
 
 scaler = MinMaxScaler(feature_range=(0,1))
 cmOCSVM, cmEC, cmLOF, cmIF, cmAE = [0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0] #TP FP FN TN
+cmRuptOCSVM, cmRuptEC, cmRuptLOF, cmRuptIF, cmRuptAE = [0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0] #TP FP FN TN
 timeOCSVM,timeEC,timeLOF,timeIF,timeAE = [],[],[],[],[]
+timeRuptOCSVM,timeRuptEC,timeRuptLOF,timeRuptIF,timeRuptAE = [],[],[],[],[]
 for trainSetNumber in trainRange:
     savePath = savePathFolder + str(trainSetNumber)
     data=data.append(diag.ifacDataFrame('train'+str(trainSetNumber)))
-    trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, windowSize=windowSize, dataIndice = trainSetNumber,dataChoice = dataChoice, dataColumnChoice=1, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
+    trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataColumnChoice=1, dataPath = trainDataPath, windowSize=windowSize, dataIndice = trainSetNumber,dataChoice = dataChoice, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
     # trainClass[np.where(trainClass == 5)[0]] = 0 
     trainScale = scaler.fit_transform(trainData[:,1].reshape(-1,1))
     diagTrainScale1 = diag.statExtraction(trainScale,windowSize,diagDataChoice)
@@ -247,25 +268,37 @@ for trainSetNumber in trainRange:
 
     
 
-    #training
-    modelAE,thresholdAE = deep.trainAE(diagTrainScale1,epochs = 50,batch_size=216)
+    #training   
+    
     classifierChoice = 'OCSVM'
-    modelOCSVM = diag.oneClassClassification(diagTrainScale1,classifierChoice=classifierChoice,figName='OC_SVM',plot=plotTrain,xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+    svmKernel='rbf'
+    svmNu=0.01
+    modelOCSVM = diag.oneClassClassification(diagTrainScale1,classifierChoice=classifierChoice,svmKernel=svmKernel,svmNu=svmNu,figName='OC_SVM',plot=plotTrain,xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+    
     classifierChoice = 'elliptic classification'
-    modelEC = diag.oneClassClassification(diagTrainScale1,classifierChoice=classifierChoice,figName='Elliptic_classification',plot=plotTrain,xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+    ECsupportFraction=0.9
+    modelEC = diag.oneClassClassification(diagTrainScale1,classifierChoice=classifierChoice,ECsupportFraction=ECsupportFraction,figName='Elliptic_classification',plot=plotTrain,xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+    
     classifierChoice = 'LOF'
+    lofNeighbours=10
     modelLOF = diag.oneClassClassification(diagTrainScale1,classifierChoice=classifierChoice,figName='LOF',plot=plotTrain,xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+    
     classifierChoice = 'isolation forest'
-    modelIF = diag.oneClassClassification(diagTrainScale1,classifierChoice=classifierChoice,figName='Isolation_forest',plot=plotTrain,xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
-
+    ifestimators=50
+    modelIF = diag.oneClassClassification(diagTrainScale1,classifierChoice=classifierChoice,ifestimators=ifestimators,figName='Isolation_forest',plot=plotTrain,xlabel='Variance',ylabel='Current',save=save,folderPath=savePath)
+    
+    epoch = 50
+    batch_size = 216
+    modelAE,thresholdAE = deep.trainAE(diagTrainScale1,epochs = epoch,batch_size=batch_size)
 
     #testing
     for testSetNumber in testRange:
         
         #Import Data
-        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel = diag.preprocessing(dataColumnChoice = 2, dataPath = testDataPath, windowSize=windowSize, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = ' ',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
+        testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel = diag.preprocessing(dataPath = testDataPath, windowSize=windowSize, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = ' ',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
         featureName = featureChoice
-        faultySetScale = scaler.transform(testData[:,2].reshape(-1,1))
+        setScale = scaler.transform(testData[:,2].reshape(-1,1))
+        faultySetScale = diag.statExtraction(setScale,windowSize,diagDataChoice)
         normalSet = scaler.transform(testData[:,1].reshape(-1,1))
         diagNormalScale = diag.statExtraction(normalSet,windowSize,diagDataChoice)
         testClassOCC = testClass.copy()
@@ -277,30 +310,35 @@ for trainSetNumber in trainRange:
         if bigLatch:
             testClassOCC = getLabel(testClassOCC,1,windowSize)
         
-    
-
         classifierChoice = 'OCSVM'
-        cmOCSVM, timeOCSVM = doOCC(modelOCSVM, testData, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmOCSVM, timeOCSVM, plotTest)
+        cmOCSVM, timeOCSVM = doOCC(modelOCSVM, faultySetScale, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmOCSVM, timeOCSVM, plotTest)
+        cmRuptOCSVM,timeRuptOCSVM = doOCCRupture(modelOCSVM, faultySetScale, testData, testClassOCC, rupturePenalty, cmRuptOCSVM, timeRuptOCSVM)
         
 
         classifierChoice = 'elliptic classification'
-        cmEC, timeEC = doOCC(modelEC, testData, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmEC, timeEC, plotTest)
+        cmEC, timeEC = doOCC(modelEC, faultySetScale, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmEC, timeEC, plotTest)
+        cmRuptEC,timeRuptEC = doOCCRupture(modelEC, faultySetScale, testData, testClassOCC, rupturePenalty, cmRuptEC, timeRuptEC)
 
 
         classifierChoice = 'LOF'
-        cmLOF, timeLOF = doOCC(modelLOF, testData, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmLOF, timeLOF, plotTest)
+        cmLOF, timeLOF = doOCC(modelLOF, faultySetScale, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmLOF, timeLOF, plotTest)
+        cmRuptLOF,timeRuptLOF = doOCCRupture(modelLOF, faultySetScale, testData, testClassOCC, rupturePenalty, cmRuptLOF, timeRuptLOF)
 
       
 
         classifierChoice = 'isolation forest'
-        cmIF, timeIF = doOCC(modelIF, testData, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmIF, timeIF, plotTest)
+        cmIF, timeIF = doOCC(modelIF, faultySetScale, diagNormalScale, testClassOCC, windowSize, diagDataChoice, cmIF, timeIF, plotTest)
+        cmRuptIF,timeRuptIF = doOCCRupture(modelIF, faultySetScale, testData, testClassOCC, rupturePenalty, cmRuptIF, timeRuptIF)
 
 
         #Auto encoder
+        faultyDataAE = faultySetScale.copy()
+        # classAE = testClassOCC.copy()
+        # faultyDataAE1 = scaler.transform(testData[:,2].reshape(-1,1))
+        # faultyDataAE1= diag.statExtraction(faultyDataAE,windowSize,diagDataChoice)
+        classAE = testClassOCC.copy()
         with Timer() as timer:
-            faultyDataAE = scaler.transform(testData[:,2].reshape(-1,1))
-            faultyDataAE = diag.statExtraction(faultyDataAE,windowSize,diagDataChoice)
-            classAE = testClassOCC.copy()
+            
             
             # for i in range(len(diagTestScale1)):
             #       tempPred = deep.predictAE(modelAE,thresholdAE,faultyDataAE[i,:])
@@ -312,8 +350,21 @@ for trainSetNumber in trainRange:
             predictionAE = deep.predictAE(modelAE,thresholdAE,faultyDataAE)
             tempCMAE = deep.confusionMatrixAE(predictionAE, classAE,1)
             cmAE = np.add(cmAE,tempCMAE)
-            
         timeAE.append(timer.interval)
+
+        # with Timer() as timer: #Rupture
+        #     timeRuptureAlgo,timeRuptureBreakPoints,timeRuptureDataBreak = diag.timeRupture(testData[:,2],penaltyValue=rupturePenalty)
+        #     for i in range(len(timeRuptureBreakPoints)-1):
+        #         indices1 = [timeRuptureBreakPoints[i],timeRuptureBreakPoints[i+1]]   
+        #         classValue1 = diag.getClass(indices1,classAE)   #getting the real class for the set of points
+        #         points = np.array(faultyDataAE[indices1,0].mean(),ndmin=2)
+        #         for featureColumn in range(1,faultyDataAE.shape[1]):
+        #             points = np.append(points,np.array(faultyDataAE[indices1,featureColumn].mean(),ndmin=2),axis=1)
+        #         predictionAE = deep.predictAE(modelAE,thresholdAE,faultyDataAE)
+        #         tempCMAE = deep.confusionMatrixAE(predictionAE, classAE,1)
+        #         cmAE = np.add(cmAE,tempCMAE)
+        # timeRuptAE.append(timer.interval) 
+        
 
         
         print('\nACCURACY for trainSet ' + str(trainSetNumber) + ' in test set ' + str(testSetNumber) + '\n')
@@ -322,38 +373,89 @@ for trainSetNumber in trainRange:
 
 
 totalPoint = cmOCSVM[0] + cmOCSVM[1] + cmOCSVM[2] + cmOCSVM[3]
-cmPercentOVSVM = [100*cmOCSVM[0]/totalPoint, 100*cmOCSVM[1]/totalPoint, 100*cmOCSVM[2]/totalPoint, 100*cmOCSVM[3]/totalPoint]
+cmPercentOCSVM = [100*cmOCSVM[0]/totalPoint, 100*cmOCSVM[1]/totalPoint, 100*cmOCSVM[2]/totalPoint, 100*cmOCSVM[3]/totalPoint]
 cmPercentEC = [100*cmEC[0]/totalPoint, 100*cmEC[1]/totalPoint, 100*cmEC[2]/totalPoint, 100*cmEC[3]/totalPoint]
 cmPercentLOF = [100*cmLOF[0]/totalPoint, 100*cmLOF[1]/totalPoint, 100*cmLOF[2]/totalPoint, 100*cmLOF[3]/totalPoint]
 cmPercentIF = [100*cmIF[0]/totalPoint, 100*cmIF[1]/totalPoint, 100*cmIF[2]/totalPoint, 100*cmIF[3]/totalPoint]
 cmPercentAE = [100*cmAE[0]/totalPoint, 100*cmAE[1]/totalPoint, 100*cmAE[2]/totalPoint, 100*cmAE[3]/totalPoint]
 
+totalPointRupture = cmRuptOCSVM[0] + cmRuptOCSVM[1] + cmRuptOCSVM[2] + cmRuptOCSVM[3]
+cmPercentRuptOCSVM = [100*cmRuptOCSVM[0]/totalPointRupture, 100*cmRuptOCSVM[1]/totalPointRupture, 100*cmRuptOCSVM[2]/totalPointRupture, 100*cmRuptOCSVM[3]/totalPointRupture]
+totalPointRupture = cmRuptEC[0] + cmRuptEC[1] + cmRuptEC[2] + cmRuptEC[3]
+cmPercentRuptEC = [100*cmRuptEC[0]/totalPointRupture, 100*cmRuptEC[1]/totalPointRupture, 100*cmRuptEC[2]/totalPointRupture, 100*cmRuptEC[3]/totalPointRupture]
+totalPointRupture = cmRuptLOF[0] + cmRuptLOF[1] + cmRuptLOF[2] + cmRuptLOF[3]
+cmPercentRuptLOF = [100*cmRuptLOF[0]/totalPointRupture, 100*cmRuptLOF[1]/totalPointRupture, 100*cmRuptLOF[2]/totalPointRupture, 100*cmRuptLOF[3]/totalPointRupture]
+totalPointRupture = cmRuptIF[0] + cmRuptIF[1] + cmRuptIF[2] + cmRuptIF[3]
+cmPercentRuptIF = [100*cmRuptIF[0]/totalPointRupture, 100*cmRuptIF[1]/totalPointRupture, 100*cmRuptIF[2]/totalPointRupture, 100*cmRuptIF[3]/totalPointRupture]
+# totalPointRupture = cmRuptAE[0] + cmRuptAE[1] + cmRuptAE[2] + cmRuptAE[3]
+# cmPercentRuptAE = [100*cmRuptAE[0]/totalPointRupture, 100*cmRuptAE[1]/totalPointRupture, 100*cmRuptAE[2]/totalPointRupture, 100*cmRuptAE[3]/totalPointRupture]
+
+
 meanTimeOCSVM = sum(timeOCSVM)/len(timeOCSVM)
+meanTimeRuptOCSVM = sum(timeRuptOCSVM)/len(timeRuptOCSVM)
 meanTimeEC = sum(timeEC)/len(timeEC)
+meanTimeRuptEC = sum(timeRuptEC)/len(timeRuptEC)
 meanTimeLOF = sum(timeLOF)/len(timeLOF)
+meanTimeRuptLOF = sum(timeRuptLOF)/len(timeRuptLOF)
 meanTimeIF = sum(timeIF)/len(timeIF)
+meanTimeRuptIF = sum(timeRuptIF)/len(timeRuptIF)
 meanTimeAE = sum(timeAE)/len(timeAE)
-print("TP FP FN TN")
+# meanTimeRuptAE = sum(timeRuptAE)/len(timeRuptAE)
+
 print("Train set: " + trainDataPath)
 print("Test set: " + testDataPath)
-print("TP FP FN TN")
+print('windowSize: ' + str(windowSize) + ' / RuptPenalty: ' + str(rupturePenalty)) 
+print("\nTP FP FN TN")
+
+
 print("OCSVM:")
+print('Kernel: ' + str(svmKernel) + ' / Nu: ' + str(svmNu))
+print('PerPoint:')
 print(cmOCSVM)
-print(cmPercentOVSVM)
+print(cmPercentOCSVM)
 print("mean time: " + str(meanTimeOCSVM))
-print("EC:")
+print('Rupture:')
+print(cmRuptOCSVM)
+print(cmPercentRuptOCSVM)
+print("mean time: " + str(meanTimeRuptOCSVM))
+
+print("\nEC:")
+print('support Fraction: ' + str(ECsupportFraction))
+print('PerPoint:')
 print(cmEC)
 print(cmPercentEC)
 print("mean time: " + str(meanTimeEC))
-print("LOF:")
+print('Rupture:')
+print(cmRuptEC)
+print(cmPercentRuptEC)
+print("mean time: " + str(meanTimeRuptEC))
+
+print("\nLOF:")
+print('N neighbours: ' + str(lofNeighbours))
+print('PerPoint:')
 print(cmLOF)
 print(cmPercentLOF)
 print("mean time: " + str(meanTimeLOF))
-print("IF:")
+print('Rupture:')
+print(cmRuptLOF)
+print(cmPercentRuptLOF)
+print("mean time: " + str(meanTimeRuptLOF))
+
+print("\nIF:")
+print('N ifestimators: ' + str(ifestimators))
+print('PerPoint:')
 print(cmIF)
 print(cmPercentIF)
 print("mean time: " + str(meanTimeIF))
-print("AE:")
+print('Rupture:')
+print(cmRuptIF)
+print(cmPercentRuptIF)
+print("mean time: " + str(meanTimeRuptIF))
+
+
+print("\nAE:")
+print('architecture: [64,32,16,16,32,64] / epoch: ' + str(epoch) + ' / batch size: ' + str(batch_size))
+print('PerPoint:')
 print(cmAE)
 print(cmPercentAE)
 print("mean time: " + str(meanTimeAE))

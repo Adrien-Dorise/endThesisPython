@@ -833,7 +833,7 @@ def classifier(data,classes,classifierChoice='Knn',RocDefectValue=1,ensemble_est
 
 
 
-def oneClassClassification(data,classifierChoice='OCSVM',random_state=None,withPoints=0,save=0,plot=0,xlabel='X',ylabel='Y',folderPath='',figName='OCC'):
+def oneClassClassification(data,classifierChoice='OCSVM',svmKernel='rbf',svmNu=0.01,ECsupportFraction=0.9,lofNeighbours=10,ifestimators=50,random_state=None,withPoints=0,save=0,plot=0,xlabel='X',ylabel='Y',folderPath='',figName='OCC'):
     '''
     Uses a one class classification methods to predict normal classes among given data set. The data set is splitted into a train set and a test set.
     Implemented methods are 'elliptic classification', 'OCSVM', 'LOF', 'isolation forest', 'Auto encoder'.
@@ -874,13 +874,13 @@ def oneClassClassification(data,classifierChoice='OCSVM',random_state=None,withP
     # Splitting dataset into training set and test set
     # Fitting classifier to the training set       
     if classifierChoice == 'OCSVM':   
-         classifier = OneClassSVM(kernel='rbf',gamma='scale',nu=0.01)
+         classifier = OneClassSVM(kernel=svmKernel,gamma='scale',nu=svmNu)
     elif classifierChoice == 'elliptic classification':
-        classifier = EllipticEnvelope(support_fraction=0.9, contamination=0.01)
+        classifier = EllipticEnvelope(support_fraction=ECsupportFraction, contamination=0.01)
     elif classifierChoice == 'LOF':
-        classifier = LocalOutlierFactor(n_neighbors=10,novelty=True,contamination=0.01)
+        classifier = LocalOutlierFactor(n_neighbors=lofNeighbours,novelty=True,contamination=0.01)
     elif classifierChoice == 'isolation forest':
-        classifier = IsolationForest(n_estimators = 50,contamination=0.01)
+        classifier = IsolationForest(n_estimators = ifestimators,contamination=0.01)
     else:
         print('Error in classifier: classifierChoice unknown')
     classifier.fit(features_train) #Training
@@ -1043,7 +1043,6 @@ def confusionMatrixClassifier(point,pointClass,classifier,faultValue, classif = 
     if len(np.shape(point)) == 1:    #There are only 1 coordinate but the matrix shape is (2,1) instead of (1,2)
         point = point.reshape(1,-1)
     prediction = classifier.predict(point)
-    
     if(classif):#We do this because depending on the classifier, the prediction value can change
         if(prediction == 1):
             prediction = -1

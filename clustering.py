@@ -1,5 +1,7 @@
 import detectionToolbox as diag
 import numpy as np
+np.set_printoptions(threshold=np.inf)
+np.set_printoptions(linewidth=np.inf)
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
@@ -74,19 +76,26 @@ def anomalyRemoval(faultyDataSet,normalDataSet,labelArray,faultValue,iteration,w
     return faultyDataSet, labelArray
 
 
-def modifyDyclee(g_size):
-    file = open('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\file.txt','r')
+def modifyDyclee(value):
+    # print('\nDyClee parameter modification: ' + paramToChange + ' to ' + value)
+    dycleeParamFile = 'H:\\DIAG_RAD\\Programs\\Dyclee\\2021_05\\dyclee\\bin\\file.txt'
+    paramToChange = 'g_size'
+    file = open(dycleeParamFile,'r')
     DycleeFile = file.read()
     file.close()
-    DycleeFile.find('g_size = ')
-    DycleeFile=DycleeFile.replace(DycleeFile[19:24],g_size)
-    file = open('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\file.txt','w')
+    beginChange = DycleeFile.find(paramToChange + ' =') + len(paramToChange + ' =')
+    endChange = beginChange + DycleeFile[beginChange:].find('\n')
+    DycleeFile=DycleeFile.replace(DycleeFile[beginChange:endChange],'')
+    DycleeFile=DycleeFile[:beginChange] + ' ' + value + DycleeFile[beginChange:]
+    file = open(dycleeParamFile,'w')
     file.write(DycleeFile)
     file.close()
+    return DycleeFile
 
 
 
 def doClassifPerPoint(model, data, classes, faultValue, cm, time, plot):
+    interrupt = False
     with Timer() as timer:
         # faultyDataTemp = scaler.transform(testData[:,2].reshape(-1,1))
         # faultyDataTemp = diag.statExtraction(faultyDataTemp,windowSize,diagDataChoice)
@@ -95,9 +104,14 @@ def doClassifPerPoint(model, data, classes, faultValue, cm, time, plot):
         # classTemp = testClassClassif.copy()
         classTemp = classes.copy()
         for i in range(len(faultyDataTemp[:,0])):
-            tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],model,faultValue=faultValue,classif=True)
-            # if(tempPred == -1 and classTemp[i] == 1):
-            #     faultyDataTemp, classTemp = anomalyRemoval(faultyDataTemp,diagNormalScale,classTemp,1,i,windowSize)
+            if(interrupt == False):
+                tempCM,tempPred = diag.confusionMatrixClassifier(faultyDataTemp[i,:],classTemp[i],model,faultValue=faultValue,classif=True)
+                if(tempPred == -1 and classTemp[i] == 1):
+                    interrupt = True
+            else:
+                tempCM = [1,0,0,0]
+                if(classTemp[i] != 1):
+                    interrupt = False
             cm = np.add(cm ,tempCM)
     time.append(timer.interval)
     if(plot):
@@ -120,8 +134,8 @@ def doClassifRupture(model, data, timeSeries, classes, faultValue, rupturePenalt
             points = np.array(faultyDataTemp[indices1,0].mean(),ndmin=2)
             for featureColumn in range(1,faultyDataTemp.shape[1]):
                 points = np.append(points,np.array(faultyDataTemp[indices1,featureColumn].mean(),ndmin=2),axis=1)
-                tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,model,faultValue=faultValue,classif=True)
-                cm = np.add(cm ,tempCM)
+            tempCM,tempPred = diag.confusionMatrixClassifier(points,classValue1,model,faultValue=faultValue,classif=True)
+            cm = np.add(cm ,tempCM)
     time.append(timer.interval) 
     return cm,time
 
@@ -134,26 +148,27 @@ def doClassifRupture(model, data, timeSeries, classes, faultValue, rupturePenalt
 # 'H:\\DIAG_RAD\\Programs\\Diagnostic_python\\DiagnosticExample\\ExampleDataSets\\All16.txt'
 
 dataChoice = 1 #1 for simulated data: 2 for real datas
-trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet\\DestructiveLatch"
-testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\DestructiveLatch"
+trainDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\trainSet\\microLatch"
+testDataPath = "H:\\DIAG_RAD\\DataSets\\\endThesisValidationData\\simulations\\testSet\\microLatch"
 savePathFolder = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\multiple_testSets\\3classes\\mean_variance_trainSet'
 resultPath = 'H:\\DIAG_RAD\\Results\\IFAC_Safeprocess_2021\\Accuracy\\clusteringAllStats\\test4'
 
-doFindParam = True
-doTestClustering = False
-diagDataChoice = 1 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq)
+doFindParam = False
+doTestClustering = True
+diagDataChoice = 6 # 1 (mean & variance); 2 (mean & frequency); 3 (variance & frequency); 4 (mean & min & max & variance & skewness & kurtosis); 5 (mean & min & max & variance & skewness & kurtosis & freq)
 
 addNewLatchClass = 0
 bigLatch = False #Adjust the labels in the time window
-windowSize = 10
+windowSize = 20
 rupturePenalty = 0.8
 faultValue = 1
 classifModelSelection = "svm"
 
 dataName = 'testSet'
-trainRange = range(1,1+1)
-testRange = range(1,1+1)
-testParamRange =  range(1,1+1)
+paramSetPath = testDataPath
+trainRange = range(1,10+1)
+testRange = range(1,20+1)
+testParamRange =  range(1,10+1)
 
 
 penaltyValue = 25
@@ -201,10 +216,12 @@ if doFindParam:
     KmeansNClust = [1,2,3,4,5,6]
     HCmetric = ['euclidean', 'l1', 'l2', 'manhattan', 'cosine']
     # DBeps = [0.01,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7]
-    DBeps = [0.0005,0.0008,0.001,0.003,0.005,0.008,0.01,0.03,0.05,0.1]
+    # DBeps = [0.0005,0.0008,0.001,0.003,0.005,0.008,0.01,0.03,0.05,0.1]
+    DBeps = [0.00001,0.00005,0.0001,0.0005,0.001,0.005,0.01,0.05,0.1,0.5]
     DBmetric = ['cityblock', 'cosine', 'euclidean', 'l1', 'l2', 'manhattan']
-    Dycleegsize = ['0.025','0.050','0.060','0.070','0.080','0.100','0.120','0.140','0.160','0.180','0.200','0.250']
-    # Dycleegsize = ['0.100','0.120','0.140','0.160','0.180','0.200','0.220','0.240','0.260']
+    # Dycleegsize = ['0.040','0.050','0.060','0.070','0.080','0.100','0.120','0.140','0.160','0.180','0.200','0.250']
+    Dycleegsize = ['0.060','0.070','0.080','0.100','0.120','0.150','0.200','0.240','0.260']
+    # Dycleegsize = ['0.250','0.275','0.300','0.325','0.350','0.375','0.400','0.425','0.450']
     accuracyParamKmeans = np.zeros((len(testParamRange),len(KmeansNClust)))
     accuracyParamHC = np.zeros((len(testParamRange),len(HCmetric)))
     accuracyParamDB = np.zeros((len(testParamRange),len(DBeps)))
@@ -212,7 +229,7 @@ if doFindParam:
     accuracyParamDyclee = np.zeros((len(testParamRange),len(Dycleegsize)))
     
     scoreParamKmeans = np.zeros((len(testParamRange),len(KmeansNClust)))
-    scoreParamHC = np.zeros((len(testParamRange),len(KmeansNClust)))
+    scoreParamHC = np.zeros((len(testParamRange),len(HCmetric)))
     scoreParamDB = np.zeros((len(testParamRange),len(DBeps)))
     scoreParamDB2 = np.zeros((len(testParamRange),len(DBmetric)))
     scoreParamDyclee = np.zeros((len(testParamRange),len(Dycleegsize)))
@@ -222,9 +239,9 @@ if doFindParam:
     
     
     for setNumber in testParamRange:
+        print('\nPARAMETER TEST for set ' + str(setNumber) + '\n')
         savePath = savePathFolder + str(setNumber)
-        data=data.append(diag.ifacDataFrame('train'+str(setNumber)))
-        trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, dataIndice = setNumber,dataChoice = dataChoice,windowSize=windowSize, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
+        trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = paramSetPath, dataIndice = setNumber,dataChoice = dataChoice,windowSize=windowSize, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
         trainClass[np.where(trainClass == 5)[0]] = 1 
         trainScale = scaler.fit_transform(trainData[:,2].reshape(-1,1))
         # diagTrainScale1 = diag.statExtraction(trainScale,windowSize,diagDataChoice)
@@ -239,17 +256,16 @@ if doFindParam:
         
       
         #dedrogram and elbow method
-        n_clusters = 4
-        metr = "cosine"
-        # modelClustKmeans,testKmeans,testKmeans = diag.clustering(diagTrainScale1,'Kmeans',n_clusters=n_clusters,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 1)
-        # modelClustHC,testHC,testHC = diag.clustering(diagTrainScale1,'HC',n_clusters=n_clusters,metric=metr,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 1)
+        clus = 4
+        met = "euclidean"
+        # modelClustKmeans,testKmeans,testKmeans = diag.clustering(diagTrainScale1,'Kmeans',n_clusters=clus,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 1)
+        # modelClustHC,testHC,testHC = diag.clustering(diagTrainScale1,'HC',n_clusters=n_clusters,metric=met,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 1)
 
 
-        
         clusteringChoice = 'HC'
         for metr in  HCmetric:
-            n_clusters = 4
-            modelClustHC,testHC,testHC = diag.clustering(diagTrainScale1,'HC',n_clusters=n_clusters,metric=metr,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+            HC_clustersTest = 4
+            modelClustHC,testHC,testHC = diag.clustering(diagTrainScale1,'HC',n_clusters=HC_clustersTest,metric=metr,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
             accuracyHC,classHC = diag.clustertingExpertOpinion(trainData,modelClustHC.labels_,trainClass,figName = 'HC')
             accuracyParamHC[i,j] = accuracyHC
             scoreParamHC[i,j] = diag.clusterScore(accuracyParamHC[i,j],len(np.unique(trainClass)),len(np.unique(modelClustHC.labels_)),ratioPenalty,penaltyValue)
@@ -259,8 +275,8 @@ if doFindParam:
         
         clusteringChoice = 'DBSCAN'
         for eps in  DBeps:
-            metr = 'euclidean'
-            modelClustDBSCAN,testDBSCAN,testDBSCAN = diag.clustering(diagTrainScale1,'DBSCAN',epsilon=eps,metric=metr,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+            DBmetrTest = 'cosine'
+            modelClustDBSCAN,testDBSCAN,testDBSCAN = diag.clustering(diagTrainScale1,'DBSCAN',epsilon=eps,metric=DBmetrTest,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
             accuracyDBSCAN,classDBSCAN = diag.clustertingExpertOpinion(trainData,modelClustDBSCAN.labels_,trainClass,figName = 'DBSCAN')
             accuracyParamDB[i,j] = accuracyDBSCAN
             scoreParamDB[i,j] = diag.clusterScore(accuracyParamDB[i,j],len(np.unique(trainClass)),len(np.unique(modelClustDBSCAN.labels_)),ratioPenalty,penaltyValue)
@@ -269,8 +285,8 @@ if doFindParam:
         j=0
     
         for metr in DBmetric :
-            eps = 0.08
-            modelClustDBSCAN,testDBSCAN,testDBSCAN = diag.clustering(diagTrainScale1,'DBSCAN',epsilon=eps,metric=metr,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+            DBepsTest = 0.005
+            modelClustDBSCAN,testDBSCAN,testDBSCAN = diag.clustering(diagTrainScale1,'DBSCAN',epsilon=DBepsTest,metric=metr,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
             accuracyDBSCAN,classDBSCAN = diag.clustertingExpertOpinion(trainData,modelClustDBSCAN.labels_,trainClass,figName = 'DBSCAN')
             accuracyParamDB2[i,j] = accuracyDBSCAN
             scoreParamDB2[i,j] = diag.clusterScore(accuracyParamDB2[i,j],len(np.unique(trainClass)),len(np.unique(modelClustDBSCAN.labels_)),ratioPenalty,penaltyValue)
@@ -278,7 +294,6 @@ if doFindParam:
             
         j=0
 
-        
         #DyClee
         for gSiz in Dycleegsize:
             #Call Dyclee
@@ -287,8 +302,8 @@ if doFindParam:
             modifyDyclee(g_size)
             scalerDyClee = preprocessing.MinMaxScaler()
             normalized_X = scalerDyClee.fit_transform(diagTrainScale1)
-            np.savetxt('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\data\\data.dat',normalized_X,delimiter=',')
-            os.system('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\DyClee H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\file.txt')
+            np.savetxt('H:\\DIAG_RAD\\Programs\\Dyclee\\2021_05\\dyclee\\data\\data.dat',normalized_X,delimiter=',')
+            os.system('H:\\DIAG_RAD\\Programs\\Dyclee\\2021_05\\dyclee\\bin\\DyClee H:\\DIAG_RAD\\Programs\\Dyclee\\2021_05\\dyclee\\bin\\file.txt')
             #Use Dyclee class in Python
             DycleeClass = np.genfromtxt('H:\\DIAG_RAD\\Results\\Diagnostic\\DyClee\\DycleeResult.dat',dtype=int)
             DycleeClass = np.subtract(DycleeClass, np.ones(len(DycleeClass),dtype=int))
@@ -301,10 +316,79 @@ if doFindParam:
             print('DyClee done !\n')
             j=j+1
         j=0    
+        
+        
         i=i+1
     
     i=0
-
+    print('\nFolder: '+trainDataPath)
+    print("score Parameters : P = " + str(penaltyValue) + " / R = " + str(ratioPenalty) + "/ window size = " + str(windowSize))
+    print("\nHC metric for " + str(HC_clustersTest)+ " clusters: ")
+    meanAccuHC = np.zeros(len(HCmetric))
+    meanScoreHC = np.zeros(len(HCmetric))
+    print(HCmetric)
+    for i in range(setNumber):
+        print("ACC" + str(accuracyParamHC[i,:]))
+        print("SCORE" + str(scoreParamHC[i,:]))
+        for j in range(len(HCmetric)):
+            meanAccuHC[j] += accuracyParamHC[i,j]
+            meanScoreHC[j] += scoreParamHC[i,j]
+    for i in range(len(HCmetric)):
+        meanAccuHC[i] = meanAccuHC[i]/setNumber
+        meanScoreHC[i] = meanScoreHC[i]/setNumber
+    print('mean accu: ' + str(meanAccuHC))
+    print('mean score: ' + str(meanScoreHC))
+    
+    print("\nDyclee size:")
+    print(Dycleegsize)
+    meanAccuDyclee = np.zeros(len(Dycleegsize))
+    meanScoreDyclee = np.zeros(len(Dycleegsize))
+    for i in range(setNumber):
+        print("ACC" + str(accuracyParamDyclee[i,:]))
+        print("SCORE" + str(scoreParamDyclee[i,:]))
+        for j in range(len(Dycleegsize)):
+            meanAccuDyclee[j] += accuracyParamDyclee[i,j]
+            meanScoreDyclee[j] += scoreParamDyclee[i,j]
+    for i in range(len(Dycleegsize)):
+        meanAccuDyclee[i] = meanAccuDyclee[i]/setNumber
+        meanScoreDyclee[i] = meanScoreDyclee[i]/setNumber
+    print('mean accu: ' + str(meanAccuDyclee))
+    print('mean score: ' + str(meanScoreDyclee))
+        
+        
+    print("\nDBSCAN epsilon for "+ str(DBmetrTest) + " metric: ")
+    print(DBeps)
+    meanAccuDB = np.zeros(len(DBeps))
+    meanScoreDB = np.zeros(len(DBeps))
+    for i in range(setNumber):
+        print("ACC" + str(accuracyParamDB[i,:]))
+        print("SCORE" + str(scoreParamDB[i,:]))
+        for j in range(len(DBeps)):
+            meanAccuDB[j] += accuracyParamDB[i,j]
+            meanScoreDB[j] += scoreParamDB[i,j]
+    for i in range(len(DBeps)):
+        meanAccuDB[i] = meanAccuDB[i]/setNumber
+        meanScoreDB[i] = meanScoreDB[i]/setNumber
+    print('mean accu: ' + str(meanAccuDB))
+    print('mean score: ' + str(meanScoreDB))
+    
+    print("\nDBSCAN metric for " + str(DBepsTest) + " epsilon")
+    print(DBmetric)
+    meanAccuDB2 = np.zeros(len(DBmetric))
+    meanScoreDB2 = np.zeros(len(DBmetric))
+    for i in range(setNumber):
+        print("ACC" + str(accuracyParamDB2[i,:]))
+        print("SCORE" + str(scoreParamDB2[i,:]))
+        for j in range(len(DBmetric)):
+            meanAccuDB2[j] += accuracyParamDB2[i,j]
+            meanScoreDB2[j] += scoreParamDB2[i,j]
+    for i in range(len(DBmetric)):
+        meanAccuDB2[i] = meanAccuDB2[i]/setNumber
+        meanScoreDB2[i] = meanScoreDB2[i]/setNumber
+    print('mean accu: ' + str(meanAccuDB2))
+    print('mean score: ' + str(meanScoreDB2))
+    
+    
 
 
 if doTestClustering:
@@ -330,7 +414,6 @@ if doTestClustering:
     j=0
     for trainSetNumber in trainRange:
         savePath = savePathFolder + str(trainSetNumber)
-        data=data.append(diag.ifacDataFrame('train'+str(trainSetNumber)))
         trainData, diagTrain1,diagTrainScale1,trainClass, featureChoice, xlabel,ylabel= diag.preprocessing(dataPath = trainDataPath, dataIndice = trainSetNumber,dataChoice = dataChoice,windowSize=windowSize, dataName = 'trainSet',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
         trainClass[np.where(trainClass == 5)[0]] = 1 
         trainScale = scaler.fit_transform(trainData[:,2].reshape(-1,1))
@@ -341,31 +424,34 @@ if doTestClustering:
         if bigLatch:
             trainClass = getLabel(trainClass,faultValue=faultValue,windowSize=windowSize)
             
-        n_clusters = 3
-        modelClustKmeans,testKmeans,testKmeans = diag.clustering(diagTrainScale1,'Kmeans',n_clusters=n_clusters,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+        n_clustersKmeans = 4
+        modelClustKmeans,testKmeans,testKmeans = diag.clustering(diagTrainScale1,'Kmeans',n_clusters=n_clustersKmeans,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
         accuracyKmeans,classKmeans = diag.clustertingExpertOpinion(trainData,modelClustKmeans.labels_,trainClass,figName = 'Kmeans')
         modelClassifKmeans,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,classKmeans,classifModelSelection)
         
-        n_clusters = 3
-        modelClustHC,testHC,testHC = diag.clustering(diagTrainScale1,'HC',n_clusters=n_clusters,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+        n_clustersHC = 4
+        metrHC = "manhattan"
+        modelClustHC,testHC,testHC = diag.clustering(diagTrainScale1,'HC',n_clusters=n_clustersHC,metric=metrHC,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
         accuracyHC,classHC = diag.clustertingExpertOpinion(trainData,modelClustHC.labels_,trainClass,figName = 'HC')
         modelClassifHC,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,classHC,classifModelSelection)
         
-        epsilon = 0.08
-        metric='cosine'
-        modelClustDBSCAN,testDBSCAN,testDBSCAN = diag.clustering(diagTrainScale1,'DBSCAN',epsilon= epsilon,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
+        epsilon = 0.03
+        metrDB='manhattan'
+        modelClustDBSCAN,testDBSCAN,testDBSCAN = diag.clustering(diagTrainScale1,'DBSCAN',epsilon= epsilon,metric=metrDB,figName='Test_Clust_'+featureChoice,xlabel=xlabel,ylabel=ylabel,save=save,folderPath=savePath,plot=plotClustering,doEvaluation = 0)
         accuracyDBSCAN,classDBSCAN = diag.clustertingExpertOpinion(trainData,modelClustDBSCAN.labels_,trainClass,figName = 'DBSCAN')
         if len(np.unique(classDBSCAN)) <=1:
             classDBSCAN[0]=1
+            classDBSCAN[1]=0
         modelClassifDBSCAN,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,classDBSCAN,classifModelSelection)
         
         #Call Dyclee
         print('\nDyClee in progress...')
-        modifyDyclee('0.05')
+        g_size = '0.175'
+        modifyDyclee(g_size)
         scalerDyClee = preprocessing.MinMaxScaler()
         normalized_X = scalerDyClee.fit_transform(diagTrainScale1)
-        np.savetxt('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\data\\data.dat',normalized_X,delimiter=',')
-        os.system('H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\DyClee H:\\DIAG_RAD\\Programs\\Dyclee\\2020_11\\bin\\file.txt')
+        np.savetxt('H:\\DIAG_RAD\\Programs\\Dyclee\\2021_05\\dyclee\\data\\data.dat',normalized_X,delimiter=',')
+        os.system('H:\\DIAG_RAD\\Programs\\Dyclee\\2021_05\\dyclee\\bin\\DyClee H:\\DIAG_RAD\\Programs\\Dyclee\\2021_05\\dyclee\\bin\\file.txt')
         #Use Dyclee class in Python
         DycleeClass = np.genfromtxt('H:\\DIAG_RAD\\Results\\Diagnostic\\DyClee\\DycleeResult.dat',dtype=int)
         DycleeClass = np.subtract(DycleeClass, np.ones(len(DycleeClass),dtype=int))
@@ -374,15 +460,16 @@ if doTestClustering:
         accuracyDyClee,classDyClee = diag.clustertingExpertOpinion(diagTrainScale1,DycleeClass,trainClass,figName = 'DyClee')
         if len(np.unique(classDyClee)) <=1:
             classDyClee[0]=1
+            classDyClee[1]=0
         modelClassifDyClee,trainRoc1,TrainCm1,trainCmAcc1 = diag.classifier(diagTrainScale1,classDyClee,classifModelSelection)
         
     
         
         
         for testSetNumber in testRange:
-            
+            print('\nACCURACY for trainSet ' + str(trainSetNumber) + ' in test set ' + str(testSetNumber) + '\n')
             #Import Data
-            testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel = diag.preprocessing(dataColumnChoice = 2, dataPath = testDataPath, windowSize=windowSize, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = ' ',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
+            testData, diagTest1 ,diagTestScale1,testClass,featureChoice, xlabel,ylabel = diag.preprocessing(dataPath = testDataPath, windowSize=windowSize, dataIndice = testSetNumber,dataChoice = dataChoice, dataName = ' ',diagDataChoice = diagDataChoice,plotFeatures = plotFeatures,save=save)
             featureName = featureChoice
             faultySetScale = scaler.transform(testData[:,2].reshape(-1,1))
             normalSet = scaler.transform(testData[:,1].reshape(-1,1))
@@ -465,9 +552,11 @@ if doTestClustering:
     
     print("Train set: " + trainDataPath)
     print("Test set: " + testDataPath)
-    print("TP FP FN TN")
+    print('windowSize: ' + str(windowSize) + ' / RuptPenalty: ' + str(rupturePenalty) + "Classif model: " + str(classifModelSelection)) 
+    print("\nTP FP FN TN")
     
-    print("\nKmeans:")
+    print("Kmeans:")
+    print('nclust: ' + str(n_clustersKmeans))
     print("PerPoint")
     print(cmPerPointKmeans)
     print(cmPercentPerPointKmeans)
@@ -478,6 +567,7 @@ if doTestClustering:
     print("mean time: " + str(meanTimeRuptKmeans))
     
     print("\nHC:")
+    print('nclust: ' + str(n_clustersHC) +  ' / metric: ' + str(metrHC))
     print("PerPoint")
     print(cmPerPointHC)
     print(cmPercentPerPointHC)
@@ -489,6 +579,7 @@ if doTestClustering:
     
     
     print("\nDBSCAN:")
+    print("epsilon: " + str(epsilon) +  ' / metric: ' + str(metrDB) )
     print("PerPoint")
     print(cmPerPointDBSCAN)
     print(cmPercentPerPointDBSCAN)
@@ -499,6 +590,7 @@ if doTestClustering:
     print("mean time: " + str(meanTimeRuptDBSCAN))
     
     print("\nDyClee:")
+    print("g_size: " + str(g_size))
     print("PerPoint")
     print(cmPerPointDyClee)
     print(cmPercentPerPointDyClee)
